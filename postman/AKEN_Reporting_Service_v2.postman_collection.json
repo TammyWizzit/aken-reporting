@@ -1,0 +1,791 @@
+{
+	"info": {
+		"_postman_id": "aken-reporting-v2-collection",
+		"name": "AKEN Reporting Service v2.0",
+		"description": "Complete API collection for AKEN Reporting Service v2.0 - Modern RESTful transaction reporting API built with Go.\n\n## Features\n- Advanced filtering with operators\n- Field selection to reduce payload\n- Flexible sorting and pagination  \n- Merchant analytics and summaries\n- Compatible with AKEN v1 authentication\n\n## Authentication\nUses Basic Authentication with merchant credentials:\n- Username: merchant_id (UUID)\n- Password: merchant_password\n\n## Base URLs\n- Development: http://localhost:8090\n- Staging: https://aken-reporting-staging.example.com\n- Production: https://aken-reporting.example.com",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "aken-reporting-service"
+	},
+	"item": [
+		{
+			"name": "🏥 System Health",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v2/health",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v2", 
+								"health"
+							]
+						},
+						"description": "Check if the AKEN Reporting Service is healthy and responsive."
+					},
+					"response": [
+						{
+							"name": "Healthy Response",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v2/health",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v2",
+										"health"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n    \"status\": \"healthy\",\n    \"service\": \"AKEN Reporting Service\",\n    \"version\": \"2.0.0\",\n    \"timestamp\": \"2025-01-28T10:30:00.000Z\",\n    \"uptime\": 86400\n}"
+						}
+					]
+				},
+				{
+					"name": "API Info",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v2/info",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v2",
+								"info"
+							]
+						},
+						"description": "Get detailed information about the API endpoints and features."
+					}
+				},
+				{
+					"name": "Debug Info (Dev Only)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/debug",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"debug"
+							]
+						},
+						"description": "Debug endpoint showing environment and authentication status (development only)."
+					}
+				}
+			],
+			"description": "System health and information endpoints."
+		},
+		{
+			"name": "📊 Transactions",
+			"item": [
+				{
+					"name": "List All Transactions",
+					"request": {
+						"auth": {
+							"type": "basic",
+							"basic": [
+								{
+									"key": "username",
+									"value": "{{merchant_id}}",
+									"type": "string"
+								},
+								{
+									"key": "password",
+									"value": "{{merchant_password}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v2/transactions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v2",
+								"transactions"
+							]
+						},
+						"description": "Get all transactions with default settings (100 records, all fields, newest first)."
+					}
+				},
+				{
+					"name": "Transactions with Field Selection",
+					"request": {
+						"auth": {
+							"type": "basic",
+							"basic": [
+								{
+									"key": "username",
+									"value": "{{merchant_id}}",
+									"type": "string"
+								},
+								{
+									"key": "password",
+									"value": "{{merchant_password}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v2/transactions?fields=tx_log_id,amount,merchant_name,tx_date_time,response_code",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v2",
+								"transactions"
+							],
+							"query": [
+								{
+									"key": "fields",
+									"value": "tx_log_id,amount,merchant_name,tx_date_time,response_code",
+									"description": "Only return specific fields"
+								}
+							]
+						},
+						"description": "Get transactions with only specific fields to reduce payload size."
+					}
+				},
+				{
+					"name": "Filtered Transactions - Success Only",
+					"request": {
+						"auth": {
+							"type": "basic",
+							"basic": [
+								{
+									"key": "username",
+									"value": "{{merchant_id}}",
+									"type": "string"
+								},
+								{
+									"key": "password",
+									"value": "{{merchant_password}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v2/transactions?filter=response_code:eq:00&sort=amount:desc&limit=20",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v2",
+								"transactions"
+							],
+							"query": [
+								{
+									"key": "filter",
+									"value": "response_code:eq:00",
+									"description": "Only successful transactions"
+								},
+								{
+									"key": "sort",
+									"value": "amount:desc",
+									"description": "Sort by amount descending"
+								},
+								{
+									"key": "limit",
+									"value": "20",
+									"description": "Limit to 20 records"
+								}
+							]
+						},
+						"description": "Get only successful transactions, sorted by amount (highest first)."
+					}
+				},
+				{
+					"name": "Date Range Filter",
+					"request": {
+						"auth": {
+							"type": "basic",
+							"basic": [
+								{
+									"key": "username",
+									"value": "{{merchant_id}}",
+									"type": "string"
+								},
+								{
+									"key": "password",
+									"value": "{{merchant_password}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v2/transactions?filter=tx_date_time:between:2024-01-01,2024-12-31&timezone=Africa/Johannesburg",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v2",
+								"transactions"
+							],
+							"query": [
+								{
+									"key": "filter",
+									"value": "tx_date_time:between:2024-01-01,2024-12-31",
+									"description": "Transactions from 2024"
+								},
+								{
+									"key": "timezone",
+									"value": "Africa/Johannesburg",
+									"description": "South African timezone"
+								}
+							]
+						},
+						"description": "Get transactions from 2024 with South African timezone formatting."
+					}
+				},
+				{
+					"name": "Complex Filter - Amount & Status",
+					"request": {
+						"auth": {
+							"type": "basic",
+							"basic": [
+								{
+									"key": "username",
+									"value": "{{merchant_id}}",
+									"type": "string"
+								},
+								{
+									"key": "password",
+									"value": "{{merchant_password}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v2/transactions?filter=(response_code:eq:00 OR response_code:eq:10) AND amount:gte:1000&sort=tx_date_time:desc",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v2",
+								"transactions"
+							],
+							"query": [
+								{
+									"key": "filter",
+									"value": "(response_code:eq:00 OR response_code:eq:10) AND amount:gte:1000",
+									"description": "Successful transactions above R10.00"
+								},
+								{
+									"key": "sort",
+									"value": "tx_date_time:desc",
+									"description": "Newest first"
+								}
+							]
+						},
+						"description": "Get successful transactions (00 or 10 response) with amount >= R10.00."
+					}
+				},
+				{
+					"name": "Paginated Results - Page 2",
+					"request": {
+						"auth": {
+							"type": "basic",
+							"basic": [
+								{
+									"key": "username",
+									"value": "{{merchant_id}}",
+									"type": "string"
+								},
+								{
+									"key": "password",
+									"value": "{{merchant_password}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v2/transactions?page=2&limit=50",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v2",
+								"transactions"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "2",
+									"description": "Page 2 (1-based)"
+								},
+								{
+									"key": "limit",
+									"value": "50",
+									"description": "50 records per page"
+								}
+							]
+						},
+						"description": "Get page 2 of results with 50 records per page."
+					}
+				},
+				{
+					"name": "Get Single Transaction",
+					"request": {
+						"auth": {
+							"type": "basic",
+							"basic": [
+								{
+									"key": "username",
+									"value": "{{merchant_id}}",
+									"type": "string"
+								},
+								{
+									"key": "password",
+									"value": "{{merchant_password}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v2/transactions/{{transaction_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v2",
+								"transactions",
+								"{{transaction_id}}"
+							]
+						},
+						"description": "Get details of a specific transaction by ID."
+					}
+				},
+				{
+					"name": "Advanced Search Query",
+					"request": {
+						"auth": {
+							"type": "basic",
+							"basic": [
+								{
+									"key": "username",
+									"value": "{{merchant_id}}",
+									"type": "string"
+								},
+								{
+									"key": "password",
+									"value": "{{merchant_password}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"query\": {\n    \"bool\": {\n      \"must\": [\n        {\"range\": {\"amount\": {\"gte\": 1000, \"lte\": 5000}}},\n        {\"term\": {\"merchant_id\": \"{{merchant_id}}\"}},\n        {\"range\": {\"tx_date_time\": {\"gte\": \"2024-01-01\", \"lte\": \"2024-12-31\"}}}\n      ],\n      \"should\": [\n        {\"term\": {\"response_code\": \"00\"}},\n        {\"term\": {\"response_code\": \"10\"}}\n      ]\n    }\n  },\n  \"fields\": [\"tx_log_id\", \"amount\", \"merchant_name\", \"tx_date_time\", \"response_code\"],\n  \"sort\": [\n    {\"tx_date_time\": {\"order\": \"desc\"}},\n    {\"amount\": {\"order\": \"asc\"}}\n  ],\n  \"pagination\": {\n    \"page\": 1,\n    \"limit\": 100\n  },\n  \"aggregations\": {\n    \"total_amount\": {\"sum\": {\"field\": \"amount\"}},\n    \"avg_amount\": {\"avg\": {\"field\": \"amount\"}}\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v2/transactions/search",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v2",
+								"transactions",
+								"search"
+							]
+						},
+						"description": "Advanced search with Elasticsearch-style query DSL and aggregations."
+					}
+				}
+			],
+			"description": "Core transaction endpoints with various filtering, sorting, and pagination examples."
+		},
+		{
+			"name": "🏢 Merchants",
+			"item": [
+				{
+					"name": "Merchant Summary",
+					"request": {
+						"auth": {
+							"type": "basic",
+							"basic": [
+								{
+									"key": "username",
+									"value": "{{merchant_id}}",
+									"type": "string"
+								},
+								{
+									"key": "password",
+									"value": "{{merchant_password}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v2/merchants/{{merchant_id}}/summary",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v2",
+								"merchants",
+								"{{merchant_id}}",
+								"summary"
+							]
+						},
+						"description": "Get comprehensive summary statistics for the merchant including transaction counts, amounts, and success rates."
+					}
+				},
+				{
+					"name": "Merchant Summary with Date Filter",
+					"request": {
+						"auth": {
+							"type": "basic",
+							"basic": [
+								{
+									"key": "username",
+									"value": "{{merchant_id}}",
+									"type": "string"
+								},
+								{
+									"key": "password",
+									"value": "{{merchant_password}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v2/merchants/{{merchant_id}}/summary?filter=tx_date_time:between:2024-01-01,2024-12-31",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v2",
+								"merchants",
+								"{{merchant_id}}",
+								"summary"
+							],
+							"query": [
+								{
+									"key": "filter",
+									"value": "tx_date_time:between:2024-01-01,2024-12-31",
+									"description": "Summary for 2024 only"
+								}
+							]
+						},
+						"description": "Get merchant summary for a specific date range (2024 in this example)."
+					}
+				},
+				{
+					"name": "Merchant Transactions",
+					"request": {
+						"auth": {
+							"type": "basic",
+							"basic": [
+								{
+									"key": "username",
+									"value": "{{merchant_id}}",
+									"type": "string"
+								},
+								{
+									"key": "password",
+									"value": "{{merchant_password}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v2/merchants/{{merchant_id}}/transactions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v2",
+								"merchants",
+								"{{merchant_id}}",
+								"transactions"
+							]
+						},
+						"description": "Get all transactions for a specific merchant (redirects to main transactions endpoint with merchant filter)."
+					}
+				}
+			],
+			"description": "Merchant-specific endpoints for summaries and transaction filtering."
+		},
+		{
+			"name": "🚧 Future Features",
+			"item": [
+				{
+					"name": "Export Transactions (Not Implemented)",
+					"request": {
+						"auth": {
+							"type": "basic",
+							"basic": [
+								{
+									"key": "username",
+									"value": "{{merchant_id}}",
+									"type": "string"
+								},
+								{
+									"key": "password",
+									"value": "{{merchant_password}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"format\": \"csv\",\n  \"filters\": {\n    \"tx_date_time\": {\"gte\": \"2024-01-01\", \"lte\": \"2024-12-31\"}\n  },\n  \"fields\": [\"tx_log_id\", \"amount\", \"merchant_name\", \"tx_date_time\"],\n  \"delivery\": {\n    \"method\": \"download\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v2/transactions/export",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v2",
+								"transactions",
+								"export"
+							]
+						},
+						"description": "Initiate bulk export of transaction data. Returns 501 Not Implemented - future feature."
+					}
+				},
+				{
+					"name": "Batch Operations (Not Implemented)",
+					"request": {
+						"auth": {
+							"type": "basic",
+							"basic": [
+								{
+									"key": "username",
+									"value": "{{merchant_id}}",
+									"type": "string"
+								},
+								{
+									"key": "password",
+									"value": "{{merchant_password}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"requests\": [\n    {\n      \"id\": \"req1\",\n      \"method\": \"GET\",\n      \"endpoint\": \"/transactions\",\n      \"parameters\": {\"limit\": 10}\n    },\n    {\n      \"id\": \"req2\",\n      \"method\": \"GET\", \n      \"endpoint\": \"/merchants/{{merchant_id}}/summary\"\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v2/transactions/batch",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v2",
+								"transactions",
+								"batch"
+							]
+						},
+						"description": "Process multiple requests in a single call. Returns 501 Not Implemented - future feature."
+					}
+				},
+				{
+					"name": "Analytics Summary (Not Implemented)",
+					"request": {
+						"auth": {
+							"type": "basic",
+							"basic": [
+								{
+									"key": "username",
+									"value": "{{merchant_id}}",
+									"type": "string"
+								},
+								{
+									"key": "password",
+									"value": "{{merchant_password}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v2/analytics/summary",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v2",
+								"analytics",
+								"summary"
+							]
+						},
+						"description": "Get overall analytics summary. Returns 501 Not Implemented - future feature."
+					}
+				}
+			],
+			"description": "Future features that return 501 Not Implemented responses. These are planned for future releases."
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Set request timestamp",
+					"pm.globals.set('timestamp', new Date().toISOString());",
+					"",
+					"// Generate request ID for tracking",
+					"pm.globals.set('request_id', 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Global tests for all requests",
+					"",
+					"// Check that we get a response",
+					"pm.test('Response received', function () {",
+					"    pm.response.to.not.be.undefined;",
+					"});",
+					"",
+					"// Check response time",
+					"pm.test('Response time is reasonable', function () {",
+					"    pm.expect(pm.response.responseTime).to.be.below(5000);",
+					"});",
+					"",
+					"// Check for security headers",
+					"if (pm.response.code === 200) {",
+					"    pm.test('Has API version header', function () {",
+					"        pm.expect(pm.response.headers.get('X-API-Version')).to.include('2.');",
+					"    });",
+					"    ",
+					"    pm.test('Has service name header', function () {",
+					"        pm.expect(pm.response.headers.get('X-Service-Name')).to.include('AKEN');",
+					"    });",
+					"}",
+					"",
+					"// Check error responses have proper structure",
+					"if (pm.response.code >= 400) {",
+					"    pm.test('Error response has proper structure', function () {",
+					"        const response = pm.response.json();",
+					"        pm.expect(response).to.have.property('error');",
+					"        pm.expect(response.error).to.have.property('code');",
+					"        pm.expect(response.error).to.have.property('message');",
+					"        pm.expect(response.error).to.have.property('timestamp');",
+					"    });",
+					"}",
+					"",
+					"// For successful data responses, check structure",
+					"if (pm.response.code === 200 && pm.response.json().data) {",
+					"    pm.test('Success response has proper structure', function () {",
+					"        const response = pm.response.json();",
+					"        pm.expect(response).to.have.property('data');",
+					"        pm.expect(response).to.have.property('meta');",
+					"        pm.expect(response.meta).to.have.property('timestamp');",
+					"        pm.expect(response.meta).to.have.property('version');",
+					"    });",
+					"}"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8090",
+			"description": "Base URL for the AKEN Reporting Service"
+		},
+		{
+			"key": "merchant_id",
+			"value": "9cda37a0-4813-11ef-95d7-c5ac867bb9fc",
+			"description": "Merchant ID for authentication (UUID format)"
+		},
+		{
+			"key": "merchant_password",
+			"value": "password",
+			"description": "Merchant password for Basic Auth"
+		},
+		{
+			"key": "transaction_id",
+			"value": "f3b24260-903f-11ef-b4a1-4982815eb203",
+			"description": "Sample transaction ID for single transaction requests"
+		}
+	]
+}

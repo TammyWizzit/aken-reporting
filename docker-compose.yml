@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  aken-reporting-service:
+    build: .
+    container_name: aken-reporting-service
+    ports:
+      - "8090:8090"
+    environment:
+      - PORT=8090
+      - ENV=development
+      - DISABLE_AUTH=true
+      # Database connection (connects to existing AKEN database)
+      - PMT_TX_DB_HOST=portal_db
+      - PMT_TX_DB_PORT=5432
+      - PMT_TX_DB_USER=wizzit_pay
+      - PMT_TX_DB_PASSWORD=wizzit_pay
+      - PMT_TX_DB_DATABASE=wizzit_pay
+    depends_on:
+      - postgres
+    networks:
+      - aken-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8090/api/v2/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # PostgreSQL database (shared with main AKEN service)
+  postgres:
+    image: postgres:13
+    container_name: aken-postgres
+    environment:
+      - POSTGRES_DB=wizzit_pay
+      - POSTGRES_USER=wizzit_pay
+      - POSTGRES_PASSWORD=wizzit_pay
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d
+    networks:
+      - aken-network
+    restart: unless-stopped
+
+  # Redis for future caching (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: aken-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - aken-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  aken-network:
+    driver: bridge
