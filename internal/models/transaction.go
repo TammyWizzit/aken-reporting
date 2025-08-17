@@ -3,6 +3,8 @@ package models
 import (
 	"encoding/json"
 	"time"
+	"fmt"
+	"math"
 )
 
 // Transaction represents a payment transaction from the AKEN system
@@ -43,6 +45,7 @@ type Transaction struct {
 	SettlementDate     *time.Time      `json:"settlement_date" gorm:"-"` // Not in current schema
 	SettlementStatus   *string         `json:"settlement_status" gorm:"-"` // Not in current schema
 	CardType           *string         `json:"card_type" gorm:"-"` // Not in current schema
+	CurrencyInfo       *CurrencyInfo   `json:"currency_info" gorm:"-"` // Currency formatting information
 }
 
 // TableName returns the table name for GORM
@@ -212,6 +215,45 @@ type TransactionSearchRequest struct {
 	Sort         []SortParams      `json:"sort"`
 	Pagination   PaginationParams  `json:"pagination"`
 	Aggregations map[string]interface{} `json:"aggregations"`
+}
+
+// CurrencyInfo represents currency formatting information
+type CurrencyInfo struct {
+	Code           string  `json:"code"`
+	Name           string  `json:"name"`
+	Symbol         string  `json:"symbol"`
+	Exponent       int     `json:"exponent"`
+	FormattedAmount string `json:"formatted_amount"`
+}
+
+// Currency represents currency table information
+type Currency struct {
+	CurrencyCode string `json:"currency_code" gorm:"column:curr_code;primaryKey"`
+	CurrencyName string `json:"currency_name" gorm:"column:curr_short"`
+	CurrDelim    int    `json:"curr_delim" gorm:"column:curr_delim"`
+}
+
+// TableName returns the table name for GORM
+func (Currency) TableName() string {
+	return "currency"
+}
+
+// FormatAmount formats the amount using currency exponent
+func (c *CurrencyInfo) FormatAmount(amount int64) string {
+	divisor := int64(math.Pow(10, float64(c.Exponent)))
+	if divisor == 0 {
+		divisor = 1
+	}
+	
+	major := amount / divisor
+	minor := amount % divisor
+	
+	if c.Exponent == 0 {
+		return fmt.Sprintf("%s %d", c.Symbol, major)
+	}
+	
+	formatStr := fmt.Sprintf("%%s %%d.%%0%dd", c.Exponent)
+	return fmt.Sprintf(formatStr, c.Symbol, major, minor)
 }
 
 // MerchantSummary represents merchant transaction summary

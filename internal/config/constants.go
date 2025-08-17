@@ -62,7 +62,7 @@ var PANFormats = map[string]string{
 // Default fields to return if none specified
 var DefaultFields = []string{
 	"tx_log_id", "tx_log_type", "tx_date_time", "amount",
-	"merchant_name", "response_code", "rrn", "pan",
+	"merchant_name", "response_code", "rrn", "pan", "currency_info",
 }
 
 // Error codes

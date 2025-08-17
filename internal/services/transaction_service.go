@@ -38,13 +38,14 @@ type GetTransactionsParams struct {
 }
 
 type TransactionServiceResult struct {
-	Transactions []models.Transaction `json:"data"`
-	TotalCount   int64                `json:"total_count"`
-	Page         int                  `json:"page"`
-	Limit        int                  `json:"limit"`
-	TotalPages   int                  `json:"total_pages"`
-	HasNext      bool                 `json:"has_next"`
-	HasPrev      bool                 `json:"has_prev"`
+	Transactions     []models.Transaction `json:"data"`
+	TotalCount       int64                `json:"total_count"`
+	Page             int                  `json:"page"`
+	Limit            int                  `json:"limit"`
+	TotalPages       int                  `json:"total_pages"`
+	CurrentPageCount int                  `json:"current_page_count"`
+	HasNext          bool                 `json:"has_next"`
+	HasPrev          bool                 `json:"has_prev"`
 }
 
 func NewTransactionService(transactionRepo repositories.TransactionRepository, cacheService CacheService) TransactionService {
@@ -114,13 +115,14 @@ func (s *transactionService) GetTransactions(merchantID string, params *GetTrans
 	
 	// Return fresh transaction data without caching
 	serviceResult := &TransactionServiceResult{
-		Transactions: result.Transactions,
-		TotalCount:   result.TotalCount,
-		Page:         result.Page,
-		Limit:        result.Limit,
-		TotalPages:   result.TotalPages,
-		HasNext:      result.Page < result.TotalPages,
-		HasPrev:      result.Page > 1,
+		Transactions:     result.Transactions,
+		TotalCount:       result.TotalCount,
+		Page:             result.Page,
+		Limit:            result.Limit,
+		TotalPages:       result.TotalPages,
+		CurrentPageCount: len(result.Transactions),
+		HasNext:          result.Page < result.TotalPages,
+		HasPrev:          result.Page > 1,
 	}
 	
 	return serviceResult, nil
@@ -184,13 +186,14 @@ func (s *transactionService) SearchTransactions(merchantID string, searchReq *mo
 	}
 	
 	return &TransactionServiceResult{
-		Transactions: result.Transactions,
-		TotalCount:   result.TotalCount,
-		Page:         result.Page,
-		Limit:        result.Limit,
-		TotalPages:   result.TotalPages,
-		HasNext:      result.Page < result.TotalPages,
-		HasPrev:      result.Page > 1,
+		Transactions:     result.Transactions,
+		TotalCount:       result.TotalCount,
+		Page:             result.Page,
+		Limit:            result.Limit,
+		TotalPages:       result.TotalPages,
+		CurrentPageCount: len(result.Transactions),
+		HasNext:          result.Page < result.TotalPages,
+		HasPrev:          result.Page > 1,
 	}, nil
 }
 
@@ -421,6 +424,7 @@ func (s *transactionService) ValidateFields(fields []string) error {
 	validFields["created_at"] = true
 	validFields["updated_at"] = true
 	validFields["description"] = true
+	validFields["currency_info"] = true
 	
 	for _, field := range fields {
 		if !validFields[field] {

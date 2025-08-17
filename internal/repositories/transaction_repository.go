@@ -66,6 +66,12 @@ func (r *transactionRepository) GetTransactions(merchantID string, filter *model
 	offset := (pagination.Page - 1) * pagination.Limit
 	query = query.Limit(pagination.Limit).Offset(offset)
 	
+	// Debug: Log the SQL query
+	sql := r.db.ToSQL(func(tx *gorm.DB) *gorm.DB {
+		return query.Find(&transactions)
+	})
+	fmt.Printf("DEBUG SQL: %s\n", sql)
+
 	// Execute query
 	if err := query.Find(&transactions).Error; err != nil {
 		return nil, err
@@ -203,7 +209,8 @@ func (r *transactionRepository) buildBaseQuery(fields []string, timezone string,
 	
 	query := r.db.Table("payment_tx_log p").
 		Select(selectedFields).
-		Joins("LEFT JOIN merchants m ON p.merchant_id = m.merchant_id")
+		Joins("LEFT JOIN merchants m ON p.merchant_id = m.merchant_id").
+		Joins("LEFT JOIN currency c ON p.currency_code = c.curr_code")
 	
 	return query
 }
@@ -211,12 +218,26 @@ func (r *transactionRepository) buildBaseQuery(fields []string, timezone string,
 // buildCountQuery constructs a query for counting records
 func (r *transactionRepository) buildCountQuery() *gorm.DB {
 	return r.db.Table("payment_tx_log p").
-		Joins("LEFT JOIN merchants m ON p.merchant_id = m.merchant_id")
+		Joins("LEFT JOIN merchants m ON p.merchant_id = m.merchant_id").
+		Joins("LEFT JOIN currency c ON p.currency_code = c.curr_code")
 }
 
 // buildFieldSelection creates the SELECT clause based on requested fields
 func (r *transactionRepository) buildFieldSelection(fields []string, timezone string, panFormat string) string {
 	var selectedFields []string
+	
+	// Always include base fields needed for the Transaction struct
+	selectedFields = append(selectedFields, "p.payment_tx_log_id")
+	selectedFields = append(selectedFields, "p.payment_tx_type_id")
+	selectedFields = append(selectedFields, "p.payment_provider_id") 
+	selectedFields = append(selectedFields, "p.currency_code")
+	selectedFields = append(selectedFields, "p.amount")
+	selectedFields = append(selectedFields, "p.updated_at")
+	selectedFields = append(selectedFields, "p.created_at")
+	selectedFields = append(selectedFields, "p.rrn")
+	selectedFields = append(selectedFields, "p.stan")
+	selectedFields = append(selectedFields, "m.name as merchant_name")
+	selectedFields = append(selectedFields, "m.merchant_id")
 	
 	panFormatSQL := config.PANFormats[panFormat]
 	if panFormatSQL == "" {
@@ -231,6 +252,10 @@ func (r *transactionRepository) buildFieldSelection(fields []string, timezone st
 			selectedFields = append(selectedFields, fmt.Sprintf("TO_CHAR(TIMEZONE('%s', p.updated_at), 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') as tx_date_time", timezone))
 		case "tx_log_type":
 			selectedFields = append(selectedFields, fmt.Sprintf("%s as tx_log_type", config.FieldMappings["tx_log_type"]))
+		case "currency_info":
+			selectedFields = append(selectedFields, "p.currency_code")
+			selectedFields = append(selectedFields, "c.curr_short as currency_name")
+			selectedFields = append(selectedFields, "c.curr_delim")
 		default:
 			if sqlField, exists := config.FieldMappings[field]; exists {
 				selectedFields = append(selectedFields, fmt.Sprintf("%s as %s", sqlField, field))
@@ -346,6 +371,29 @@ func (r *transactionRepository) postProcessTransactions(transactions []models.Tr
 					tx.UserRef = &ref
 				}
 			}
+		}
+		
+		// Create currency info from joined currency data
+		r.populateCurrencyInfo(tx)
+	}
+}
+
+// populateCurrencyInfo populates currency information for a transaction
+func (r *transactionRepository) populateCurrencyInfo(tx *models.Transaction) {
+	// Get currency information from database if not already populated
+	if tx.CurrencyInfo == nil && tx.CurrencyCode != "" {
+		var currency models.Currency
+		if err := r.db.Where("curr_code = ?", tx.CurrencyCode).First(&currency).Error; err == nil {
+			currInfo := &models.CurrencyInfo{
+				Code:     currency.CurrencyCode,
+				Name:     currency.CurrencyName,
+				Symbol:   "R", // Default to R for South African Rand
+				Exponent: currency.CurrDelim,
+			}
+			
+			// Format the amount using the currency info
+			currInfo.FormattedAmount = currInfo.FormatAmount(tx.Amount)
+			tx.CurrencyInfo = currInfo
 		}
 	}
 }
