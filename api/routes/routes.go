@@ -2,6 +2,7 @@ package routes
 
 import (
 	"aken_reporting_service/internal/config"
+	"aken_reporting_service/internal/database"
 	"aken_reporting_service/internal/handlers"
 	"aken_reporting_service/internal/middleware"
 	"aken_reporting_service/internal/repositories"
@@ -14,7 +15,7 @@ import (
 )
 
 // SetupRoutes initializes all API routes with dependency injection following the household project pattern
-func SetupRoutes(router *gin.Engine, db *gorm.DB) {
+func SetupRoutes(router *gin.Engine, db *gorm.DB, cacheService services.CacheService) {
 	// Apply global middleware
 	router.Use(middleware.RequestIDMiddleware())
 	router.Use(middleware.ResponseHeadersMiddleware())
@@ -27,7 +28,7 @@ func SetupRoutes(router *gin.Engine, db *gorm.DB) {
 	transactionRepo := repositories.NewTransactionRepository(db)
 
 	// Initialize services
-	transactionService := services.NewTransactionService(transactionRepo)
+	transactionService := services.NewTransactionService(transactionRepo, cacheService)
 
 	// Initialize handlers
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
@@ -37,12 +38,25 @@ func SetupRoutes(router *gin.Engine, db *gorm.DB) {
 
 	// Health check endpoint
 	v2.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status":    "healthy",
+		// Check database health
+		dbHealth := database.CheckDatabaseHealth()
+		
+		// Determine overall status
+		status := "healthy"
+		httpStatus := http.StatusOK
+		
+		if dbHealth.Status != "healthy" {
+			status = "degraded"
+			httpStatus = http.StatusServiceUnavailable
+		}
+		
+		c.JSON(httpStatus, gin.H{
+			"status":    status,
 			"service":   config.ServiceName,
 			"version":   config.APIVersion,
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
 			"uptime":    time.Since(startTime).Seconds(),
+			"database":  dbHealth,
 		})
 	})
 
@@ -128,12 +142,10 @@ func RegisterTransactionRoutes(rg *gin.RouterGroup, handler *handlers.Transactio
 func handleNotImplemented(feature string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.JSON(http.StatusNotImplemented, gin.H{
-			"error": gin.H{
-				"code":       config.ErrorCodeNotImplemented,
-				"message":    feature + " not yet implemented",
-				"timestamp":  time.Now().UTC().Format(time.RFC3339),
-				"request_id": c.GetHeader("X-Request-ID"),
-			},
+			"code":       config.ErrorCodeNotImplemented,
+			"message":    feature + " not yet implemented",
+			"timestamp":  time.Now().UTC().Format(time.RFC3339),
+			"request_id": c.GetHeader("X-Request-ID"),
 		})
 	}
 }

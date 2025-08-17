@@ -1,0 +1,30 @@
+# Development Dockerfile - includes Go runtime for hot reload
+FROM golang:1.23-alpine
+
+# Install development dependencies
+RUN apk add --no-cache git ca-certificates tzdata curl wget
+
+# Note: Air hot reload tool requires Go 1.24+, skipping for now
+# RUN go install github.com/cosmtrek/air@latest
+
+# Set working directory
+WORKDIR /app
+
+# Copy go mod files first for better caching
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Expose port
+EXPOSE 8090
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8090/api/v2/health || exit 1
+
+# Default command for development
+CMD ["go", "run", "main.go"]

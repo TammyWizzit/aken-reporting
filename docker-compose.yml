@@ -1,6 +1,121 @@
 version: '3.8'
 
 services:
+  # Development service (for make dev)
+  dev:
+    build: 
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: aken-reporting-service-dev
+    ports:
+      - "8090:8090"
+    environment:
+      - PORT=8090
+      - ENV=development
+      - DISABLE_AUTH=true
+      - GIN_MODE=debug
+      # Database connection
+      - PMT_TX_DB_HOST=postgres
+      - PMT_TX_DB_PORT=5432
+      - PMT_TX_DB_USER=wizzit_pay
+      - PMT_TX_DB_PASSWORD=wizzit_pay
+      - PMT_TX_DB_DATABASE=wizzit_pay
+      # Redis configuration
+      - REDIS_ENABLED=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - REDIS_DB=0
+      - REDIS_POOL_SIZE=10
+      - REDIS_TIMEOUT=5
+      - REDIS_TTL_SECONDS=1800
+      - REDIS_KEY_PREFIX=aken:reporting
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - aken-network
+    volumes:
+      - .:/app
+    working_dir: /app
+
+  # Production service (for make build)
+  prod:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: aken-reporting-service-prod
+    ports:
+      - "8090:8090"
+    environment:
+      - PORT=8090
+      - ENV=production
+      - GIN_MODE=release
+      # Database connection
+      - PMT_TX_DB_HOST=postgres
+      - PMT_TX_DB_PORT=5432
+      - PMT_TX_DB_USER=wizzit_pay
+      - PMT_TX_DB_PASSWORD=wizzit_pay
+      - PMT_TX_DB_DATABASE=wizzit_pay
+      # Redis configuration
+      - REDIS_ENABLED=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - REDIS_DB=0
+      - REDIS_POOL_SIZE=10
+      - REDIS_TIMEOUT=5
+      - REDIS_TTL_SECONDS=1800
+      - REDIS_KEY_PREFIX=aken:reporting
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - aken-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8090/api/v2/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Blue deployment service (for blue-green deployments)
+  blue:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: aken-reporting-service-blue
+    ports:
+      - "8091:8090"
+    environment:
+      - PORT=8090
+      - ENV=staging
+      - GIN_MODE=release
+      # Database connection
+      - PMT_TX_DB_HOST=postgres
+      - PMT_TX_DB_PORT=5432
+      - PMT_TX_DB_USER=wizzit_pay
+      - PMT_TX_DB_PASSWORD=wizzit_pay
+      - PMT_TX_DB_DATABASE=wizzit_pay
+      # Redis configuration
+      - REDIS_ENABLED=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - REDIS_DB=0
+      - REDIS_POOL_SIZE=10
+      - REDIS_TIMEOUT=5
+      - REDIS_TTL_SECONDS=1800
+      - REDIS_KEY_PREFIX=aken:reporting:blue
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - aken-network
+    restart: unless-stopped
+
+  # Main service (backwards compatibility)
   aken-reporting-service:
     build: .
     container_name: aken-reporting-service
@@ -11,11 +126,21 @@ services:
       - ENV=development
       - DISABLE_AUTH=true
       # Database connection (connects to existing AKEN database)
-      - PMT_TX_DB_HOST=portal_db
+      - PMT_TX_DB_HOST=postgres
       - PMT_TX_DB_PORT=5432
       - PMT_TX_DB_USER=wizzit_pay
       - PMT_TX_DB_PASSWORD=wizzit_pay
       - PMT_TX_DB_DATABASE=wizzit_pay
+      # Redis configuration
+      - REDIS_ENABLED=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD
+      - REDIS_DB=0
+      - REDIS_POOL_SIZE=10
+      - REDIS_TIMEOUT=5
+      - REDIS_TTL_SECONDS=1800
+      - REDIS_KEY_PREFIX=aken:reporting
     depends_on:
       - postgres
     networks:
@@ -37,7 +162,7 @@ services:
       - POSTGRES_USER=wizzit_pay
       - POSTGRES_PASSWORD=wizzit_pay
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./sql:/docker-entrypoint-initdb.d

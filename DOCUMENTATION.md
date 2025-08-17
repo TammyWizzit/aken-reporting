@@ -513,7 +513,7 @@ cp .env.example .env
 go mod download
 
 # 4. Run development server
-make dev
+go run main.go
 ```
 
 #### Docker Deployment

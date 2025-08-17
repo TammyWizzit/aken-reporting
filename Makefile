@@ -1,190 +1,205 @@
-# AKEN Reporting Service Makefile
-# Following the patterns from humble-household-overhaul-project
+export APP := $(shell basename $(abspath $(dir $(lastword $(MAKEFILE_LIST)))))
+ENV ?= staging
+REGISTRY = registry.$(ENV).wizzitdigital.com
+VERSION = $(shell git describe --tags --always --dirty 2>/dev/null || echo "v1.0.0")
 
-.PHONY: help build run test clean docker-build docker-run dev lint deps mod-tidy
+default: build
 
-# Default target
-help: ## Show this help message
-	@echo "AKEN Reporting Service v2.0"
-	@echo "Available targets:"
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+# Go build (equivalent to browserify for Go projects)
+gobuild:
+	@echo "🔨 Building Go application..."
+	@go mod download
+	@go mod tidy
+	@echo "✅ Go dependencies ready"
 
-# Development targets
-dev: ## Run in development mode with hot reload
-	@echo "🚀 Starting AKEN Reporting Service in development mode..."
-	@export DISABLE_AUTH=true ENV=development && go run main.go
+blue:
+	$(MAKE) gobuild
+	@echo "🔵 Building blue deployment..."
+	docker-compose build blue
+	$(MAKE) push APP=blue
+	@echo "✅ Blue deployment complete"
 
-run: ## Run the application
-	@echo "▶️  Starting AKEN Reporting Service..."
-	@go run main.go
+build:
+	@echo "🏗️  Building production image..."
+	make gobuild
+	docker-compose build prod
+	@echo "✅ Production build complete"
 
-build: ## Build the application binary
-	@echo "🔨 Building AKEN Reporting Service..."
-	@CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o bin/aken-reporting-service .
-	@echo "✅ Build complete: bin/aken-reporting-service"
+test:
+	@echo "🧪 Running tests..."
+	make gobuild
+	docker-compose build dev
+	docker-compose run --rm dev go test ./...
+	@echo "✅ Tests completed"
+
+dev:
+	@echo "🚀 Starting development environment..."
+	make gobuild
+	docker-compose build dev
+	@echo "📊 Starting AKEN Reporting Service..."
+	@echo "🌐 API will be available at: http://localhost:8090"
+	@echo "🏥 Health check: http://localhost:8090/api/v2/health"
+	@echo "📈 Transactions: http://localhost:8090/api/v2/transactions"
+	docker-compose up dev
+	@echo "🛑 Development environment stopped"
+
+# Local development without Docker
+dev-local:
+	@echo "🚀 Starting local development server..."
+	@echo "📊 AKEN Reporting Service v2.0"
+	@echo "🗄️  Checking database connection..."
+	@docker-compose up postgres -d
+	@sleep 2
+	@echo "🌐 Starting API server on http://localhost:8090"
+	@echo "🏥 Health endpoint: http://localhost:8090/api/v2/health"
+	@echo "📈 Transactions endpoint: http://localhost:8090/api/v2/transactions"
+	@echo "🛠️  Press Ctrl+C to stop"
+	@DISABLE_AUTH=true ENV=development go run main.go
+
+cleanup:
+	@echo "🧹 Cleaning up containers and volumes..."
+	docker-compose down --volumes
+	@echo "✅ Cleanup complete"
+
+.PHONY: build test dev dev-local
+
+# Database operations
+migrate:
+	@echo "🗄️  Running database migrations..."
+	@echo "📂 Loading production backup data..."
+	docker-compose run --rm $(ENV) sh -c "psql -h postgres -U wizzit_pay -d wizzit_pay < 20250816_backup.sql"
+	@echo "✅ Database migration complete"
+
+# Development database setup
+db-setup:
+	@echo "🗄️  Setting up development database..."
+	@docker-compose up postgres -d
+	@echo "⏳ Waiting for PostgreSQL to be ready..."
+	@sleep 5
+	@echo "📊 Loading production backup data..."
+	@docker exec -i aken-postgres psql -U wizzit_pay -d wizzit_pay < 20250816_backup.sql 2>/dev/null || echo "Data already loaded"
+	@echo "✅ Database setup complete"
+	@echo "🔍 Database contains production-like transaction data"
 
 # Testing targets
-test: ## Run all tests
-	@echo "🧪 Running tests..."
+test-unit:
+	@echo "🧪 Running unit tests..."
 	@go test -v ./...
+	@echo "✅ Unit tests complete"
 
-test-coverage: ## Run tests with coverage
+test-coverage:
 	@echo "🧪 Running tests with coverage..."
 	@go test -coverprofile=coverage.out ./...
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "✅ Coverage report generated: coverage.html"
 
-benchmark: ## Run benchmark tests
-	@echo "⚡ Running benchmarks..."
-	@go test -bench=. -benchmem ./...
+test-race:
+	@echo "🧪 Running race condition tests..."
+	@go test -race ./...
+	@echo "✅ Race condition tests complete"
 
-# Code quality targets
-lint: ## Run linter
+test-all: test-unit test-coverage test-race
+	@echo "✅ All tests completed successfully"
+
+# Code quality
+lint:
 	@echo "🔍 Running linter..."
 	@if command -v golangci-lint >/dev/null 2>&1; then \
 		golangci-lint run; \
+		echo "✅ Linting complete"; \
 	else \
-		echo "❌ golangci-lint not installed. Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
+		echo "⚠️  golangci-lint not installed. Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
 	fi
 
-fmt: ## Format code
+fmt:
 	@echo "💅 Formatting code..."
 	@go fmt ./...
 	@echo "✅ Code formatted"
 
-vet: ## Run go vet
-	@echo "🔍 Running go vet..."
-	@go vet ./...
-	@echo "✅ Vet passed"
+# Build targets
+build-binary:
+	@echo "🔨 Building binary..."
+	@CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o bin/aken-reporting-service .
+	@echo "✅ Binary built: bin/aken-reporting-service"
 
-# Dependency management
-deps: ## Download dependencies
-	@echo "📦 Downloading dependencies..."
-	@go mod download
-	@echo "✅ Dependencies downloaded"
+# Docker registry operations
+push: push-$(ENV)
 
-mod-tidy: ## Tidy go modules
-	@echo "🧹 Tidying go modules..."
-	@go mod tidy
-	@echo "✅ Modules tidied"
+push-$(ENV):
+	@echo "📤 Pushing $(APP) to $(REGISTRY)"
+	@echo "🏷️  Version: $(VERSION)"
+	docker tag $(APP):latest $(REGISTRY)/$(APP):$(VERSION)
+	docker push $(REGISTRY)/$(APP):$(VERSION)
+	@echo "✅ Push complete: $(REGISTRY)/$(APP):$(VERSION)"
 
-mod-verify: ## Verify go modules
-	@echo "✅ Verifying go modules..."
-	@go mod verify
+.PHONY: push push-$(ENV) migrate db-setup test-unit test-coverage test-race test-all lint fmt build-binary
 
-# Docker targets
-docker-build: ## Build Docker image
-	@echo "🐳 Building Docker image..."
-	@docker build -t aken-reporting-service:latest .
-	@echo "✅ Docker image built: aken-reporting-service:latest"
-
-docker-run: ## Run Docker container
-	@echo "🐳 Running Docker container..."
-	@docker run -d \
-		-p 8090:8090 \
-		-e DISABLE_AUTH=true \
-		-e ENV=development \
-		--name aken-reporting-service \
-		aken-reporting-service:latest
-	@echo "✅ Container started on http://localhost:8090"
-
-docker-stop: ## Stop Docker container
-	@echo "🛑 Stopping Docker container..."
-	@docker stop aken-reporting-service || true
-	@docker rm aken-reporting-service || true
-	@echo "✅ Container stopped"
-
-docker-compose-up: ## Start all services with docker-compose
-	@echo "🐳 Starting all services with docker-compose..."
-	@docker-compose up -d
-	@echo "✅ Services started. API available at http://localhost:8090"
-
-docker-compose-down: ## Stop all services
-	@echo "🛑 Stopping all services..."
-	@docker-compose down
-	@echo "✅ Services stopped"
-
-docker-compose-logs: ## View service logs
-	@docker-compose logs -f aken-reporting-service
-
-# Database targets
-db-status: ## Check database connection
-	@echo "🗄️  Checking database connection..."
-	@curl -s http://localhost:8090/api/v2/health | jq '.status' 2>/dev/null || echo "Service not running or jq not installed"
-
-# Utility targets
-clean: ## Clean build artifacts
-	@echo "🧹 Cleaning build artifacts..."
-	@rm -rf bin/
-	@rm -f coverage.out coverage.html
-	@docker system prune -f 2>/dev/null || true
-	@echo "✅ Cleaned"
-
-env-setup: ## Set up environment file
-	@echo "⚙️  Setting up environment..."
-	@cp .env.example .env
-	@echo "✅ Environment file created. Edit .env with your settings"
-
-health-check: ## Check service health
+# Health and status checks
+health:
 	@echo "🏥 Checking service health..."
-	@curl -s http://localhost:8090/api/v2/health || echo "❌ Service not responding"
+	@curl -s http://localhost:8090/api/v2/health | jq '.' || echo "❌ Service not responding"
 
-api-info: ## Get API information
-	@echo "ℹ️  Getting API information..."
-	@curl -s http://localhost:8090/api/v2/info | jq '.' 2>/dev/null || echo "Service not running or jq not installed"
+status:
+	@echo "📊 Service Status Check"
+	@echo "======================="
+	@echo "🐳 Docker containers:"
+	@docker-compose ps 2>/dev/null || echo "Docker Compose not running"
+	@echo ""
+	@echo "🔌 Port 8090 status:"
+	@lsof -i :8090 | head -2 || echo "Port 8090 not in use"
+	@echo ""
+	@echo "🏥 Health check:"
+	@curl -s http://localhost:8090/api/v2/health | jq '.status' 2>/dev/null || echo "Service not responding"
 
-# Performance targets
-load-test: ## Run basic load test (requires hey)
-	@echo "⚡ Running load test..."
-	@if command -v hey >/dev/null 2>&1; then \
-		hey -n 1000 -c 10 -H "Authorization: Basic $(shell echo -n 'test:test' | base64)" http://localhost:8090/api/v2/transactions; \
-	else \
-		echo "❌ 'hey' not installed. Install with: go install github.com/rakyll/hey@latest"; \
-	fi
+# Quick start for new developers
+quick-start:
+	@echo "🚀 AKEN Reporting Service - Quick Start"
+	@echo "======================================"
+	@echo "1️⃣  Setting up database..."
+	$(MAKE) db-setup
+	@echo ""
+	@echo "2️⃣  Starting development server..."
+	@echo "🌐 API will be available at: http://localhost:8090"
+	@echo "🏥 Health: http://localhost:8090/api/v2/health"
+	@echo "📈 Transactions: http://localhost:8090/api/v2/transactions"
+	@echo ""
+	$(MAKE) dev-local
 
-# Development workflow targets
-dev-setup: env-setup deps ## Complete development setup
-	@echo "🎯 Development setup complete!"
-	@echo "Next steps:"
-	@echo "  1. Edit .env with your database settings"
-	@echo "  2. Run 'make dev' to start development server"
-	@echo "  3. Visit http://localhost:8090/api/v2/health to verify"
+# Development workflow
+dev-workflow: fmt lint test-unit dev-local
 
-dev-test: fmt vet test ## Run development tests
-	@echo "✅ Development tests passed!"
+.PHONY: health status quick-start dev-workflow
 
-ci: deps fmt vet test ## Run CI pipeline
-	@echo "✅ CI pipeline completed successfully!"
-
-# Release targets  
-release-build: clean deps test build ## Build release version
-	@echo "🚀 Release build complete!"
-
-# Monitoring targets
-logs: ## Show application logs (when running locally)
-	@echo "📋 Application logs:"
-	@tail -f /tmp/aken-reporting-service.log 2>/dev/null || echo "No log file found. Run with: make run > /tmp/aken-reporting-service.log"
-
-metrics: ## Show basic metrics
-	@echo "📊 Basic metrics:"
-	@echo "Build info:" && go version
-	@echo "Dependencies:" && go list -m all | wc -l
-	@echo "Lines of code:" && find . -name '*.go' -not -path './vendor/*' | xargs wc -l | tail -1
-
-# Documentation targets
-docs-serve: ## Serve documentation (if you add godoc)
-	@echo "📚 Starting documentation server..."
-	@if command -v godoc >/dev/null 2>&1; then \
-		godoc -http=:6060; \
-	else \
-		echo "❌ godoc not installed. Install with: go install golang.org/x/tools/cmd/godoc@latest"; \
-	fi
-
-# Quick commands for common workflows
-quick-start: docker-compose-up health-check ## Quick start with Docker
-	@echo "🎉 AKEN Reporting Service is running!"
-	@echo "📡 API: http://localhost:8090/api/v2/"
-	@echo "🏥 Health: http://localhost:8090/api/v2/health" 
-	@echo "ℹ️  Info: http://localhost:8090/api/v2/info"
-
-all: deps fmt vet test build ## Run all build steps
+# Help target
+help:
+	@echo "🔧 AKEN Reporting Service v2.0 - Available Commands"
+	@echo "=================================================="
+	@echo ""
+	@echo "🚀 Development:"
+	@echo "  make dev          - Start with Docker"
+	@echo "  make dev-local    - Start locally (recommended)"
+	@echo "  make quick-start  - Complete setup for new developers"
+	@echo ""
+	@echo "🏗️  Building:"
+	@echo "  make build        - Build production Docker image"
+	@echo "  make build-binary - Build Go binary"
+	@echo ""
+	@echo "🧪 Testing:"
+	@echo "  make test         - Run tests in Docker"
+	@echo "  make test-all     - Run all test types"
+	@echo "  make test-unit    - Unit tests only"
+	@echo ""
+	@echo "🗄️  Database:"
+	@echo "  make db-setup     - Setup development database"
+	@echo "  make migrate      - Run migrations"
+	@echo ""
+	@echo "🔍 Quality:"
+	@echo "  make lint         - Run linter"
+	@echo "  make fmt          - Format code"
+	@echo ""
+	@echo "📊 Status:"
+	@echo "  make health       - Check service health"
+	@echo "  make status       - Show service status"
+	@echo ""
+	@echo "🧹 Cleanup:"
+	@echo "  make cleanup      - Remove containers and volumes"

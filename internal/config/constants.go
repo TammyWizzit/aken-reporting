@@ -1,5 +1,7 @@
 package config
 
+import "strings"
+
 // API version constants
 const (
 	APIVersion = "2.0.0"
@@ -77,7 +79,25 @@ const (
 	ErrorCodeInternalError   = "INTERNAL_SERVER_ERROR"
 	ErrorCodeNotImplemented  = "NOT_IMPLEMENTED"
 	ErrorCodeBadRequest      = "BAD_REQUEST"
+	ErrorCodeServiceUnavailable = "SERVICE_UNAVAILABLE"
 )
+
+// User-friendly error messages
+var ErrorMessages = map[string]string{
+	ErrorCodeAuthFailed:      "Authentication failed. Please check your credentials.",
+	ErrorCodeAuthzFailed:     "Access denied. You don't have permission to access this resource.",
+	ErrorCodeInvalidFilter:   "Invalid filter expression. Please check your filter syntax.",
+	ErrorCodeInvalidField:    "Invalid field specified. Please check the field name.",
+	ErrorCodeInvalidSort:     "Invalid sort expression. Please check your sort syntax.",
+	ErrorCodeNotFound:        "The requested resource was not found.",
+	ErrorCodeTxNotFound:      "Transaction not found.",
+	ErrorCodeMerchantNotFound: "Merchant not found.",
+	ErrorCodeDatabaseError:   "Service temporarily unavailable. Please try again later.",
+	ErrorCodeInternalError:   "An internal error occurred. Please try again later.",
+	ErrorCodeNotImplemented:  "This feature is not yet implemented.",
+	ErrorCodeBadRequest:      "Invalid request. Please check your parameters.",
+	ErrorCodeServiceUnavailable: "Service temporarily unavailable. Please try again later.",
+}
 
 // Rate limiting constants
 const (
@@ -86,3 +106,34 @@ const (
 	RateLimitEnterprise = 50000 // requests per hour
 	RateLimitWindow    = 3600   // seconds (1 hour)
 )
+
+// GetUserFriendlyMessage returns a user-friendly error message for the given error code
+func GetUserFriendlyMessage(errorCode string) string {
+	if message, exists := ErrorMessages[errorCode]; exists {
+		return message
+	}
+	return "An unexpected error occurred. Please try again later."
+}
+
+// IsInternalError checks if an error should be sanitized before exposing to API
+func IsInternalError(err error) bool {
+	if err == nil {
+		return false
+	}
+	
+	// Check for database-related errors that should be sanitized
+	errorStr := err.Error()
+	internalKeywords := []string{
+		"column", "does not exist", "SQLSTATE", "syntax error",
+		"foreign key", "constraint", "duplicate", "unique",
+		"connection", "timeout", "deadlock", "lock",
+	}
+	
+	for _, keyword := range internalKeywords {
+		if strings.Contains(strings.ToLower(errorStr), strings.ToLower(keyword)) {
+			return true
+		}
+	}
+	
+	return false
+}

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"aken_reporting_service/internal/models"
 	"aken_reporting_service/internal/config"
+	"aken_reporting_service/internal/models"
 
 	"gorm.io/gorm"
 )
@@ -59,7 +59,7 @@ func (r *transactionRepository) GetTransactions(merchantID string, filter *model
 	countQuery = r.applyFilters(countQuery, filter)
 	
 	if err := countQuery.Count(&totalCount).Error; err != nil {
-		return nil, fmt.Errorf("failed to count transactions: %v", err)
+		return nil, err
 	}
 	
 	// Apply pagination
@@ -68,7 +68,7 @@ func (r *transactionRepository) GetTransactions(merchantID string, filter *model
 	
 	// Execute query
 	if err := query.Find(&transactions).Error; err != nil {
-		return nil, fmt.Errorf("failed to fetch transactions: %v", err)
+		return nil, err
 	}
 	
 	// Post-process results
@@ -97,7 +97,7 @@ func (r *transactionRepository) GetTransactionByID(merchantID, transactionID str
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("failed to fetch transaction: %v", err)
+		return nil, err
 	}
 	
 	// Post-process single transaction
@@ -114,7 +114,7 @@ func (r *transactionRepository) GetTransactionCount(merchantID string, filter *m
 	
 	var count int64
 	if err := query.Count(&count).Error; err != nil {
-		return 0, fmt.Errorf("failed to count transactions: %v", err)
+		return 0, err
 	}
 	
 	return count, nil
@@ -144,8 +144,6 @@ func (r *transactionRepository) GetMerchantSummary(merchantID string, filter *mo
 			MIN(p.updated_at) as min_date,
 			MAX(p.updated_at) as max_date
 		`).
-		Joins("LEFT JOIN devices d ON p.device_id = d.deviceId").
-		Joins("LEFT JOIN terminals t ON d.terminal_id = t.terminal_id").
 		Joins("LEFT JOIN merchants m ON p.merchant_id = m.merchant_id").
 		Where("m.merchant_id = ? OR m.provisioner_id = ?", merchantID, merchantID).
 		Group("m.merchant_id, m.name")
@@ -159,7 +157,7 @@ func (r *transactionRepository) GetMerchantSummary(merchantID string, filter *mo
 				MerchantName: "Unknown",
 			}, nil
 		}
-		return nil, fmt.Errorf("failed to get merchant summary: %v", err)
+		return nil, err
 	}
 	
 	summary := &models.MerchantSummary{
@@ -205,8 +203,6 @@ func (r *transactionRepository) buildBaseQuery(fields []string, timezone string,
 	
 	query := r.db.Table("payment_tx_log p").
 		Select(selectedFields).
-		Joins("LEFT JOIN devices d ON p.device_id = d.deviceId").
-		Joins("LEFT JOIN terminals t ON d.terminal_id = t.terminal_id").
 		Joins("LEFT JOIN merchants m ON p.merchant_id = m.merchant_id")
 	
 	return query
@@ -215,8 +211,6 @@ func (r *transactionRepository) buildBaseQuery(fields []string, timezone string,
 // buildCountQuery constructs a query for counting records
 func (r *transactionRepository) buildCountQuery() *gorm.DB {
 	return r.db.Table("payment_tx_log p").
-		Joins("LEFT JOIN devices d ON p.device_id = d.deviceId").
-		Joins("LEFT JOIN terminals t ON d.terminal_id = t.terminal_id").
 		Joins("LEFT JOIN merchants m ON p.merchant_id = m.merchant_id")
 }
 
@@ -255,9 +249,10 @@ func (r *transactionRepository) applyFilters(query *gorm.DB, filter *models.Tran
 		return query
 	}
 	
-	if filter.DeviceID != nil {
-		query = query.Where("d.deviceId = ?", *filter.DeviceID)
-	}
+	// Note: DeviceID filtering is disabled since we're not joining with devices table
+	// if filter.DeviceID != nil {
+	// 	query = query.Where("d.deviceid = ?", *filter.DeviceID)
+	// }
 	
 	if filter.ResponseCode != nil {
 		query = query.Where("p.result_code = ?", *filter.ResponseCode)

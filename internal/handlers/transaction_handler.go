@@ -88,7 +88,16 @@ func (h *TransactionHandler) GetTransactions(c *gin.Context) {
 	// Get transactions
 	result, err := h.transactionService.GetTransactions(merchantID, params)
 	if err != nil {
-		h.sendErrorResponse(c, http.StatusInternalServerError, config.ErrorCodeDatabaseError, fmt.Sprintf("Failed to retrieve transactions: %v", err), nil)
+		// Log the actual error for debugging
+		fmt.Printf("Database error in GetTransactions: %v\n", err)
+		
+		// Check if this is an internal error that should be sanitized
+		if config.IsInternalError(err) {
+			h.sendErrorResponse(c, http.StatusServiceUnavailable, config.ErrorCodeServiceUnavailable, "", 
+				gin.H{"retry_after": 30})
+		} else {
+			h.sendErrorResponse(c, http.StatusInternalServerError, config.ErrorCodeDatabaseError, "", nil)
+		}
 		return
 	}
 
@@ -257,7 +266,15 @@ func (h *TransactionHandler) GetMerchantSummary(c *gin.Context) {
 
 	summary, err := h.transactionService.GetMerchantSummary(merchantID, filter)
 	if err != nil {
-		h.sendErrorResponse(c, http.StatusInternalServerError, config.ErrorCodeDatabaseError, fmt.Sprintf("Failed to get merchant summary: %v", err), nil)
+		// Log the actual error for debugging
+		fmt.Printf("Database error in GetMerchantSummary: %v\n", err)
+		
+		// Check if this is an internal error that should be sanitized
+		if config.IsInternalError(err) {
+			h.sendErrorResponse(c, http.StatusServiceUnavailable, config.ErrorCodeServiceUnavailable, "", nil)
+		} else {
+			h.sendErrorResponse(c, http.StatusInternalServerError, config.ErrorCodeDatabaseError, "", nil)
+		}
 		return
 	}
 
@@ -306,17 +323,21 @@ func (h *TransactionHandler) GetMerchantTransactions(c *gin.Context) {
 // Helper functions
 
 func (h *TransactionHandler) sendErrorResponse(c *gin.Context, statusCode int, errorCode, message string, details interface{}) {
+	// Use user-friendly message if available
+	userMessage := config.GetUserFriendlyMessage(errorCode)
+	if message != "" {
+		userMessage = message
+	}
+	
 	response := gin.H{
-		"error": gin.H{
-			"code":       errorCode,
-			"message":    message,
-			"timestamp":  time.Now().UTC().Format(time.RFC3339),
-			"request_id": getRequestID(c),
-		},
+		"code":       errorCode,
+		"message":    userMessage,
+		"timestamp":  time.Now().UTC().Format(time.RFC3339),
+		"request_id": getRequestID(c),
 	}
 	
 	if details != nil {
-		response["error"].(gin.H)["details"] = details
+		response["details"] = details
 	}
 	
 	c.JSON(statusCode, response)
@@ -391,7 +412,7 @@ func getScheme(c *gin.Context) string {
 }
 
 func parseCommaSeparated(input string) []string {
-	var result []string
+	result := make([]string, 0)
 	parts := strings.Split(input, ",")
 	for _, part := range parts {
 		if trimmed := strings.TrimSpace(part); trimmed != "" {

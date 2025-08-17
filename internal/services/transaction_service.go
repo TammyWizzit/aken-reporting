@@ -5,9 +5,11 @@ import (
 	"strings"
 	"time"
 
+	"aken_reporting_service/internal/config"
+	"aken_reporting_service/internal/database"
 	"aken_reporting_service/internal/models"
 	"aken_reporting_service/internal/repositories"
-	"aken_reporting_service/internal/config"
+	"crypto/md5"
 )
 
 type TransactionService interface {
@@ -22,6 +24,7 @@ type TransactionService interface {
 
 type transactionService struct {
 	transactionRepo repositories.TransactionRepository
+	cacheService    CacheService
 }
 
 type GetTransactionsParams struct {
@@ -44,9 +47,10 @@ type TransactionServiceResult struct {
 	HasPrev      bool                 `json:"has_prev"`
 }
 
-func NewTransactionService(transactionRepo repositories.TransactionRepository) TransactionService {
+func NewTransactionService(transactionRepo repositories.TransactionRepository, cacheService CacheService) TransactionService {
 	return &transactionService{
 		transactionRepo: transactionRepo,
+		cacheService:    cacheService,
 	}
 }
 
@@ -77,25 +81,39 @@ func (s *transactionService) GetTransactions(merchantID string, params *GetTrans
 		return nil, fmt.Errorf("invalid fields: %v", err)
 	}
 	
+	// Skip caching for transaction data to ensure fresh data
+	// Transaction data changes frequently and users need latest information
+	
 	pagination := models.PaginationParams{
 		Page:  params.Page,
 		Limit: params.Limit,
 	}
 	
-	result, err := s.transactionRepo.GetTransactions(
-		merchantID,
-		params.Filter,
-		params.Fields,
-		params.Sort,
-		pagination,
-		params.Timezone,
-		params.PANFormat,
-	)
+	// Use retry logic for database operations
+	retryConfig := database.DefaultRetryConfig()
+	
+	var result *repositories.TransactionListResult
+	err := database.RetryWithBackoff(func() error {
+		var dbErr error
+		result, dbErr = s.transactionRepo.GetTransactions(
+			merchantID,
+			params.Filter,
+			params.Fields,
+			params.Sort,
+			pagination,
+			params.Timezone,
+			params.PANFormat,
+		)
+		return dbErr
+	}, retryConfig)
+	
 	if err != nil {
-		return nil, fmt.Errorf("failed to get transactions: %v", err)
+		// Don't wrap the error to avoid exposing internal details
+		return nil, err
 	}
 	
-	return &TransactionServiceResult{
+	// Return fresh transaction data without caching
+	serviceResult := &TransactionServiceResult{
 		Transactions: result.Transactions,
 		TotalCount:   result.TotalCount,
 		Page:         result.Page,
@@ -103,7 +121,9 @@ func (s *transactionService) GetTransactions(merchantID string, params *GetTrans
 		TotalPages:   result.TotalPages,
 		HasNext:      result.Page < result.TotalPages,
 		HasPrev:      result.Page > 1,
-	}, nil
+	}
+	
+	return serviceResult, nil
 }
 
 // GetTransactionByID retrieves a single transaction by ID
@@ -125,7 +145,7 @@ func (s *transactionService) GetTransactionByID(merchantID, transactionID string
 	
 	transaction, err := s.transactionRepo.GetTransactionByID(merchantID, transactionID, fields, timezone, panFormat)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get transaction: %v", err)
+		return nil, err
 	}
 	
 	return transaction, nil
@@ -160,7 +180,7 @@ func (s *transactionService) SearchTransactions(merchantID string, searchReq *mo
 	
 	result, err := s.transactionRepo.SearchTransactions(merchantID, searchReq, timezone, panFormat)
 	if err != nil {
-		return nil, fmt.Errorf("failed to search transactions: %v", err)
+		return nil, err
 	}
 	
 	return &TransactionServiceResult{
@@ -176,9 +196,27 @@ func (s *transactionService) SearchTransactions(merchantID string, searchReq *mo
 
 // GetMerchantSummary calculates merchant summary statistics
 func (s *transactionService) GetMerchantSummary(merchantID string, filter *models.TransactionFilter) (*models.MerchantSummary, error) {
+	// Generate cache key for merchant summary
+	cacheKey := s.generateMerchantSummaryCacheKey(merchantID, filter)
+	
+	// Try to get from cache first (summaries can be cached)
+	if s.cacheService != nil {
+		if cachedSummary, err := s.cacheService.GetCachedMerchantSummary(cacheKey); err == nil && cachedSummary != nil {
+			return cachedSummary, nil
+		}
+	}
+	
+	// Cache miss - calculate summary from database
 	summary, err := s.transactionRepo.GetMerchantSummary(merchantID, filter)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get merchant summary: %v", err)
+		// Don't wrap the error to avoid exposing internal details
+		return nil, err
+	}
+	
+	// Cache the summary for 30 minutes (aggregated data is safe to cache)
+	if s.cacheService != nil {
+		ttl := config.GetRedisTTL()
+		s.cacheService.SetCachedMerchantSummary(cacheKey, summary, ttl)
 	}
 	
 	return summary, nil
@@ -430,4 +468,96 @@ func parseDateTime(value string) (time.Time, error) {
 	}
 	
 	return time.Time{}, fmt.Errorf("unsupported date format: %s", value)
+}
+
+// generateTransactionCacheKey creates a unique cache key for transaction queries
+func (s *transactionService) generateTransactionCacheKey(merchantID string, params *GetTransactionsParams) string {
+	// Create a string representation of the parameters
+	keyParts := []string{
+		"transactions",
+		merchantID,
+		fmt.Sprintf("page:%d", params.Page),
+		fmt.Sprintf("limit:%d", params.Limit),
+		fmt.Sprintf("timezone:%s", params.Timezone),
+		fmt.Sprintf("pan_format:%s", params.PANFormat),
+	}
+	
+	// Add fields
+	if len(params.Fields) > 0 {
+		keyParts = append(keyParts, fmt.Sprintf("fields:%s", strings.Join(params.Fields, ",")))
+	}
+	
+	// Add sort parameters
+	if len(params.Sort) > 0 {
+		sortParts := make([]string, len(params.Sort))
+		for i, sort := range params.Sort {
+			sortParts[i] = fmt.Sprintf("%s:%s", sort.Field, sort.Direction)
+		}
+		keyParts = append(keyParts, fmt.Sprintf("sort:%s", strings.Join(sortParts, ",")))
+	}
+	
+	// Add filter parameters
+	if params.Filter != nil {
+		if params.Filter.MerchantID != nil {
+			keyParts = append(keyParts, fmt.Sprintf("filter_merchant_id:%s", *params.Filter.MerchantID))
+		}
+		if params.Filter.DeviceID != nil {
+			keyParts = append(keyParts, fmt.Sprintf("filter_device_id:%s", *params.Filter.DeviceID))
+		}
+		if params.Filter.ResponseCode != nil {
+			keyParts = append(keyParts, fmt.Sprintf("filter_response_code:%s", *params.Filter.ResponseCode))
+		}
+		if params.Filter.CurrencyCode != nil {
+			keyParts = append(keyParts, fmt.Sprintf("filter_currency_code:%s", *params.Filter.CurrencyCode))
+		}
+		if params.Filter.AmountMin != nil {
+			keyParts = append(keyParts, fmt.Sprintf("filter_amount_min:%d", *params.Filter.AmountMin))
+		}
+		if params.Filter.AmountMax != nil {
+			keyParts = append(keyParts, fmt.Sprintf("filter_amount_max:%d", *params.Filter.AmountMax))
+		}
+		if params.Filter.DateTimeFrom != nil {
+			keyParts = append(keyParts, fmt.Sprintf("filter_date_from:%s", params.Filter.DateTimeFrom.Format(time.RFC3339)))
+		}
+		if params.Filter.DateTimeTo != nil {
+			keyParts = append(keyParts, fmt.Sprintf("filter_date_to:%s", params.Filter.DateTimeTo.Format(time.RFC3339)))
+		}
+	}
+	
+	// Join all parts and create a hash
+	key := strings.Join(keyParts, "|")
+	hash := fmt.Sprintf("%x", md5.Sum([]byte(key)))
+	
+	return fmt.Sprintf("%s:%s", config.GetRedisKeyPrefix(), hash[:16])
+}
+
+// generateMerchantSummaryCacheKey creates a unique cache key for merchant summary queries
+func (s *transactionService) generateMerchantSummaryCacheKey(merchantID string, filter *models.TransactionFilter) string {
+	// Create a string representation of the parameters
+	keyParts := []string{
+		"summary",
+		merchantID,
+	}
+	
+	// Add filter parameters if present
+	if filter != nil {
+		if filter.DateTimeFrom != nil {
+			keyParts = append(keyParts, fmt.Sprintf("from:%s", filter.DateTimeFrom.Format(time.RFC3339)))
+		}
+		if filter.DateTimeTo != nil {
+			keyParts = append(keyParts, fmt.Sprintf("to:%s", filter.DateTimeTo.Format(time.RFC3339)))
+		}
+		if filter.AmountMin != nil {
+			keyParts = append(keyParts, fmt.Sprintf("min_amount:%d", *filter.AmountMin))
+		}
+		if filter.AmountMax != nil {
+			keyParts = append(keyParts, fmt.Sprintf("max_amount:%d", *filter.AmountMax))
+		}
+	}
+	
+	// Join all parts and create a hash
+	key := strings.Join(keyParts, "|")
+	hash := fmt.Sprintf("%x", md5.Sum([]byte(key)))
+	
+	return fmt.Sprintf("%s:%s", config.GetRedisKeyPrefix(), hash[:16])
 }
