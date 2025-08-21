@@ -18,6 +18,7 @@ type TransactionRepository interface {
 	GetTransactionCount(merchantID string, filter *models.TransactionFilter) (int64, error)
 	GetMerchantSummary(merchantID string, filter *models.TransactionFilter) (*models.MerchantSummary, error)
 	SearchTransactions(merchantID string, searchReq *models.TransactionSearchRequest, timezone string, panFormat string) (*TransactionListResult, error)
+	GetTransactionTotals(merchantID string, request models.TransactionTotalsRequest) (*models.TransactionTotalsResponse, error)
 }
 
 type transactionRepository struct {
@@ -25,12 +26,14 @@ type transactionRepository struct {
 }
 
 type TransactionListResult struct {
-	Transactions []models.Transaction `json:"data"`
-	TotalCount   int64                `json:"total_count"`
-	Page         int                  `json:"page"`
-	Limit        int                  `json:"limit"`
-	TotalPages   int                  `json:"total_pages"`
+	Transactions     []models.Transaction `json:"data"`
+	TotalCount       int64                `json:"total_count"`
+	Page             int                  `json:"page"`
+	Limit            int                  `json:"limit"`
+	TotalPages       int                  `json:"total_pages"`
+	RequestedFields  []string             `json:"-"` // Internal field, not serialized
 }
+
 
 func NewTransactionRepository(db *gorm.DB) TransactionRepository {
 	return &transactionRepository{db: db}
@@ -49,8 +52,8 @@ func (r *transactionRepository) GetTransactions(merchantID string, filter *model
 	// Apply additional filters
 	query = r.applyFilters(query, filter)
 	
-	// Apply sorting
-	query = r.applySorting(query, sort)
+	// Apply sorting - for DISTINCT ON queries, we need special handling
+	query = r.applySortingWithDistinct(query, sort)
 	
 	// Get total count for pagination
 	var totalCount int64
@@ -67,10 +70,10 @@ func (r *transactionRepository) GetTransactions(merchantID string, filter *model
 	query = query.Limit(pagination.Limit).Offset(offset)
 	
 	// Debug: Log the SQL query
-	sql := r.db.ToSQL(func(tx *gorm.DB) *gorm.DB {
-		return query.Find(&transactions)
-	})
-	fmt.Printf("DEBUG SQL: %s\n", sql)
+	// sql := r.db.ToSQL(func(tx *gorm.DB) *gorm.DB {
+	// 	return query.Find(&transactions)
+	// })
+	// fmt.Printf("DEBUG SQL: %s\n", sql)
 
 	// Execute query
 	if err := query.Find(&transactions).Error; err != nil {
@@ -83,11 +86,12 @@ func (r *transactionRepository) GetTransactions(merchantID string, filter *model
 	totalPages := int((totalCount + int64(pagination.Limit) - 1) / int64(pagination.Limit))
 	
 	return &TransactionListResult{
-		Transactions: transactions,
-		TotalCount:   totalCount,
-		Page:         pagination.Page,
-		Limit:        pagination.Limit,
-		TotalPages:   totalPages,
+		Transactions:    transactions,
+		TotalCount:      totalCount,
+		Page:            pagination.Page,
+		Limit:           pagination.Limit,
+		TotalPages:      totalPages,
+		RequestedFields: fields,
 	}, nil
 }
 
@@ -156,7 +160,7 @@ func (r *transactionRepository) GetMerchantSummary(merchantID string, filter *mo
 	
 	query = r.applyFilters(query, filter)
 	
-	if err := query.First(&result).Error; err != nil {
+	if err := query.Take(&result).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return &models.MerchantSummary{
 				MerchantID: merchantID,
@@ -201,16 +205,22 @@ func (r *transactionRepository) SearchTransactions(merchantID string, searchReq 
 
 // buildBaseQuery constructs the base query with joins and field selection
 func (r *transactionRepository) buildBaseQuery(fields []string, timezone string, panFormat string) *gorm.DB {
+	var query *gorm.DB
+	
 	if len(fields) == 0 {
-		fields = config.DefaultFields
+		// No field filtering - select all fields plus computed fields from joins
+		query = r.db.Table("payment_tx_log p").
+			Select("DISTINCT ON (p.payment_tx_log_id) p.*, m.name as merchant_name, c.curr_short as currency_name, c.curr_delim").
+			Joins("LEFT JOIN merchants m ON p.merchant_id = m.merchant_id").
+			Joins("LEFT JOIN currency c ON p.currency_code = c.curr_code")
+	} else {
+		// Field filtering requested - select only specific fields
+		selectedFields := r.buildFieldSelection(fields, timezone, panFormat)
+		query = r.db.Table("payment_tx_log p").
+			Select("DISTINCT ON (p.payment_tx_log_id) " + selectedFields).
+			Joins("LEFT JOIN merchants m ON p.merchant_id = m.merchant_id").
+			Joins("LEFT JOIN currency c ON p.currency_code = c.curr_code")
 	}
-	
-	selectedFields := r.buildFieldSelection(fields, timezone, panFormat)
-	
-	query := r.db.Table("payment_tx_log p").
-		Select(selectedFields).
-		Joins("LEFT JOIN merchants m ON p.merchant_id = m.merchant_id").
-		Joins("LEFT JOIN currency c ON p.currency_code = c.curr_code")
 	
 	return query
 }
@@ -226,19 +236,6 @@ func (r *transactionRepository) buildCountQuery() *gorm.DB {
 func (r *transactionRepository) buildFieldSelection(fields []string, timezone string, panFormat string) string {
 	var selectedFields []string
 	
-	// Always include base fields needed for the Transaction struct
-	selectedFields = append(selectedFields, "p.payment_tx_log_id")
-	selectedFields = append(selectedFields, "p.payment_tx_type_id")
-	selectedFields = append(selectedFields, "p.payment_provider_id") 
-	selectedFields = append(selectedFields, "p.currency_code")
-	selectedFields = append(selectedFields, "p.amount")
-	selectedFields = append(selectedFields, "p.updated_at")
-	selectedFields = append(selectedFields, "p.created_at")
-	selectedFields = append(selectedFields, "p.rrn")
-	selectedFields = append(selectedFields, "p.stan")
-	selectedFields = append(selectedFields, "m.name as merchant_name")
-	selectedFields = append(selectedFields, "m.merchant_id")
-	
 	panFormatSQL := config.PANFormats[panFormat]
 	if panFormatSQL == "" {
 		panFormatSQL = config.PANFormats["bin_id_and_pan_id"]
@@ -246,6 +243,14 @@ func (r *transactionRepository) buildFieldSelection(fields []string, timezone st
 	
 	for _, field := range fields {
 		switch field {
+		case "payment_tx_log_id":
+			selectedFields = append(selectedFields, "p.payment_tx_log_id")
+		case "amount":
+			selectedFields = append(selectedFields, "p.amount")
+		case "merchant_name":
+			selectedFields = append(selectedFields, "m.name as merchant_name")
+		case "response_code":
+			selectedFields = append(selectedFields, "p.result_code as response_code")
 		case "pan":
 			selectedFields = append(selectedFields, fmt.Sprintf("%s as pan", panFormatSQL))
 		case "tx_date_time":
@@ -328,6 +333,36 @@ func (r *transactionRepository) applyFilters(query *gorm.DB, filter *models.Tran
 	return query
 }
 
+// applySortingWithDistinct adds ORDER BY clauses for DISTINCT ON queries
+func (r *transactionRepository) applySortingWithDistinct(query *gorm.DB, sort []models.SortParams) *gorm.DB {
+	// For DISTINCT ON (p.payment_tx_log_id), we must order by p.payment_tx_log_id first
+	orderBy := []string{"p.payment_tx_log_id"}
+	
+	if len(sort) == 0 {
+		// Default sort - add updated_at after the required DISTINCT column
+		orderBy = append(orderBy, "p.updated_at DESC")
+	} else {
+		// Add user-specified sorts after the required DISTINCT column
+		for _, s := range sort {
+			direction := "ASC"
+			if strings.ToLower(s.Direction) == "desc" {
+				direction = "DESC"
+			}
+			
+			var sqlField string
+			if mappedField, exists := config.FieldMappings[s.Field]; exists {
+				sqlField = mappedField
+			} else {
+				sqlField = fmt.Sprintf("p.%s", s.Field)
+			}
+			
+			orderBy = append(orderBy, fmt.Sprintf("%s %s", sqlField, direction))
+		}
+	}
+	
+	return query.Order(strings.Join(orderBy, ", "))
+}
+
 // applySorting adds ORDER BY clauses
 func (r *transactionRepository) applySorting(query *gorm.DB, sort []models.SortParams) *gorm.DB {
 	if len(sort) == 0 {
@@ -356,11 +391,18 @@ func (r *transactionRepository) postProcessTransactions(transactions []models.Tr
 	for i := range transactions {
 		tx := &transactions[i]
 		
-		// Set type string based on payment_tx_type_id
-		tx.Type = tx.GetTypeString()
+		// Set type string based on payment_tx_type_id (if not already set by SQL)
+		if tx.Type == "" {
+			tx.Type = tx.GetTypeString()
+		}
 		
 		// Set reversed flag
 		tx.Reversed = tx.IsReversed()
+		
+		// Set response_code as alias for result_code (if not already set by SQL)
+		if tx.ResponseCode == nil {
+			tx.ResponseCode = tx.ResultCode
+		}
 		
 		// Extract user_ref from meta if needed
 		if tx.Meta != nil {
@@ -375,26 +417,42 @@ func (r *transactionRepository) postProcessTransactions(transactions []models.Tr
 		
 		// Create currency info from joined currency data
 		r.populateCurrencyInfo(tx)
+		
+		// Generate PAN from bin_id and pan_id if available
+		if tx.BinID != nil && tx.PanID != nil && *tx.BinID != "" && *tx.PanID != "" {
+			binID := *tx.BinID
+			panID := *tx.PanID
+			if len(binID) >= 6 {
+				pan := fmt.Sprintf("%s %s** **** %s", binID[:4], binID[4:6], panID)
+				tx.PAN = &pan
+			}
+		}
 	}
 }
 
 // populateCurrencyInfo populates currency information for a transaction
 func (r *transactionRepository) populateCurrencyInfo(tx *models.Transaction) {
-	// Get currency information from database if not already populated
+	// Use joined currency data if available, otherwise query database
 	if tx.CurrencyInfo == nil && tx.CurrencyCode != "" {
-		var currency models.Currency
-		if err := r.db.Where("curr_code = ?", tx.CurrencyCode).First(&currency).Error; err == nil {
-			currInfo := &models.CurrencyInfo{
-				Code:     currency.CurrencyCode,
-				Name:     currency.CurrencyName,
-				Symbol:   "R", // Default to R for South African Rand
-				Exponent: currency.CurrDelim,
-			}
-			
-			// Format the amount using the currency info
-			currInfo.FormattedAmount = currInfo.FormatAmount(tx.Amount)
-			tx.CurrencyInfo = currInfo
+		currInfo := &models.CurrencyInfo{
+			Code:     tx.CurrencyCode,
+			Name:     tx.CurrencyName, // From joined currency table
+			Symbol:   "R", // Default to R for South African Rand
+			Exponent: tx.CurrDelim,   // From joined currency table
 		}
+		
+		// If joined data is empty, fall back to database query
+		if currInfo.Name == "" || currInfo.Exponent == 0 {
+			var currency models.Currency
+			if err := r.db.Where("curr_code = ?", tx.CurrencyCode).First(&currency).Error; err == nil {
+				currInfo.Name = currency.CurrencyName
+				currInfo.Exponent = currency.CurrDelim
+			}
+		}
+		
+		// Format the amount using the currency info
+		currInfo.FormattedAmount = currInfo.FormatAmount(tx.Amount)
+		tx.CurrencyInfo = currInfo
 	}
 }
 
@@ -466,4 +524,86 @@ func (r *transactionRepository) parseClause(clause interface{}, filter *models.T
 			}
 		}
 	}
+}
+
+// GetTransactionTotals returns transaction totals by type for a specific date and device/terminal
+func (r *transactionRepository) GetTransactionTotals(merchantID string, request models.TransactionTotalsRequest) (*models.TransactionTotalsResponse, error) {
+	type TotalResult struct {
+		PaymentTxTypeID int     `gorm:"column:payment_tx_type_id"`
+		TypeName        string  `gorm:"column:type_name"`
+		TrxType         string  `gorm:"column:trx_type"`
+		TrxDescr        string  `gorm:"column:trx_descr"`
+		TotalAmount     float64 `gorm:"column:total_amount"`
+	}
+	
+	var results []TotalResult
+	
+	// Build base query with JOIN to payment_tx_types and merchant tables
+	query := r.db.Table("payment_tx_log p").
+		Select(`
+			p.payment_tx_type_id,
+			COALESCE(pt.name, 'Unknown') as type_name,
+			CASE 
+				WHEN p.payment_tx_type_id = 0 THEN 'payment'
+				WHEN p.payment_tx_type_id = 1 THEN 'reversal'
+				WHEN p.payment_tx_type_id = 2 THEN 'void'
+				WHEN p.payment_tx_type_id = 3 THEN 'refund'
+				WHEN p.payment_tx_type_id = 9 THEN 'mm_purchase'
+				WHEN p.payment_tx_type_id = 10 THEN 'mm_refund'
+				ELSE 'unknown'
+			END as trx_type,
+			COALESCE(pt.name, 'Unknown') as trx_descr,
+			SUM(CAST(p.amount as DECIMAL(15,2)) / 100.0) as total_amount
+		`).
+		Joins("LEFT JOIN payment_tx_types pt ON p.payment_tx_type_id = pt.payment_tx_type_id").
+		Joins("LEFT JOIN merchants m ON p.merchant_id = m.merchant_id").
+		Where("DATE(p.created_at) = ?", request.Date).
+		Where("m.merchant_id = ? OR m.provisioner_id = ?", merchantID, merchantID).
+		Group("p.payment_tx_type_id, pt.name").
+		Order("p.payment_tx_type_id")
+	
+	// Apply device/terminal filters
+	if request.DeviceID != "" {
+		query = query.Where("p.device_id = ?", request.DeviceID)
+	}
+	if request.TerminalID != "" {
+		query = query.Where("p.terminal_id = ?", request.TerminalID)
+	}
+	if request.BankTerminalID != "" {
+		query = query.Where("p.bank_terminal_id = ?", request.BankTerminalID)
+	}
+	
+	// Execute query
+	if err := query.Find(&results).Error; err != nil {
+		return nil, fmt.Errorf("failed to get transaction totals: %w", err)
+	}
+	
+	// Convert results to response format
+	totals := make([]models.TransactionTotal, len(results))
+	for i, result := range results {
+		totals[i] = models.TransactionTotal{
+			TrxType:     result.TrxType,
+			TrxDescr:    result.TrxDescr,
+			TotalAmount: result.TotalAmount,
+		}
+	}
+	
+	// Build response
+	response := &models.TransactionTotalsResponse{
+		Date:   request.Date,
+		Totals: totals,
+	}
+	
+	// Add device/terminal info to response if provided
+	if request.DeviceID != "" {
+		response.DeviceID = request.DeviceID
+	}
+	if request.TerminalID != "" {
+		response.TerminalID = request.TerminalID
+	}
+	if request.BankTerminalID != "" {
+		response.BankTerminalID = request.BankTerminalID
+	}
+	
+	return response, nil
 }

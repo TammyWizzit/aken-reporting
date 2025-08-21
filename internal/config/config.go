@@ -59,3 +59,22 @@ func GetPort() string {
 func IsDevMode() bool {
 	return os.Getenv("ENV") == "development" || os.Getenv("DISABLE_AUTH") == "true"
 }
+
+// GetJWTSecret returns the JWT signing secret
+func GetJWTSecret() string {
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		// Default secret for development (DO NOT use in production)
+		secret = "aken-reporting-service-dev-secret-change-in-production"
+	}
+	return secret
+}
+
+// GetJWTIssuer returns the JWT issuer
+func GetJWTIssuer() string {
+	issuer := os.Getenv("JWT_ISSUER")
+	if issuer == "" {
+		issuer = "aken-reporting-service"
+	}
+	return issuer
+}

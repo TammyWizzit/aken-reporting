@@ -40,12 +40,16 @@ Update these key variables in your selected environment:
 
 ## 📋 Collection Structure
 
+### 🔐 Authentication (2 requests)
+- **Generate JWT Token**: Get Bearer token using merchant credentials
+- **Verify JWT Token**: Validate current token and get token information
+
 ### 🏥 System Health (3 requests)
 - **Health Check**: Basic service health verification
 - **API Info**: Detailed API information and capabilities  
 - **Debug Info**: Development debugging information
 
-### 📊 Transactions (8 requests)
+### 📊 Transactions (10 requests)
 - **List All Transactions**: Basic transaction retrieval
 - **Transactions with Field Selection**: Specific field filtering
 - **Filtered Transactions - Success Only**: Response code filtering
@@ -54,6 +58,8 @@ Update these key variables in your selected environment:
 - **Paginated Results**: Pagination example
 - **Get Single Transaction**: Individual transaction lookup
 - **Advanced Search Query**: Elasticsearch-style complex search
+- **Transaction Totals by Date**: Daily totals aggregated by transaction type
+- **Transaction Totals with Device Filter**: Device/terminal filtered daily totals
 
 ### 🏢 Merchants (3 requests)
 - **Merchant Summary**: Comprehensive merchant statistics
@@ -68,9 +74,10 @@ Update these key variables in your selected environment:
 ## 🔧 Pre-configured Features
 
 ### Authentication
-- **Basic Auth** pre-configured using environment variables
+- **JWT Bearer Token** authentication with automatic token management
 - **Dynamic credentials** using `{{merchant_id}}` and `{{merchant_password}}`
-- **Development mode** support with DISABLE_AUTH
+- **Automatic token injection** via collection pre-request scripts
+- **Token expiration handling** with clear console warnings
 
 ### Request Scripts
 - **Pre-request**: Automatic timestamp and request ID generation
@@ -92,21 +99,26 @@ Update these key variables in your selected environment:
    - Run "Health Check" to verify service is running
    - Expected: 200 OK with healthy status
 
-2. **Test Authentication**:
-   - Run "List All Transactions" 
-   - Expected: 200 OK with transaction data (or 401 if auth failed)
+2. **Generate Authentication Token**:
+   - Run "Generate JWT Token" to get Bearer token
+   - Expected: 200 OK with JWT token automatically stored
+   - Token will be used automatically for all subsequent requests
 
-3. **Explore Filtering**:
+3. **Test Authenticated Endpoints**:
+   - Run "List All Transactions" 
+   - Expected: 200 OK with transaction data (JWT token used automatically)
+
+4. **Explore Filtering**:
    - Run "Filtered Transactions - Success Only"
    - Modify filter parameter to test different conditions
    - Expected: Filtered results matching criteria
 
-4. **Test Pagination**:
+5. **Test Pagination**:
    - Run "Paginated Results - Page 2"
    - Check pagination metadata in response
    - Expected: Page 2 data with correct pagination links
 
-5. **Advanced Features**:
+6. **Advanced Features**:
    - Run "Advanced Search Query"
    - Explore complex filtering with request body
    - Expected: Aggregated results with metadata
@@ -117,13 +129,13 @@ Update these key variables in your selected environment:
 # Modify the fields parameter in requests:
 
 # Minimal fields for performance
-fields=tx_log_id,amount,merchant_name
+fields=payment_tx_log_id,amount,merchant_name
 
 # Extended transaction details  
-fields=tx_log_id,amount,merchant_name,tx_date_time,response_code,auth_code,rrn
+fields=payment_tx_log_id,amount,merchant_name,tx_date_time,response_code,auth_code,rrn
 
 # Complete transaction record
-fields=tx_log_id,tx_log_type,tx_date_time,amount,merchant_id,merchant_name,device_id,response_code,auth_code,rrn,pan,reversed,settlement_status,stan,user_ref,meta,settlement_date,card_type
+fields=payment_tx_log_id,tx_log_type,tx_date_time,amount,merchant_id,merchant_name,device_id,response_code,auth_code,rrn,pan,reversed,settlement_status,stan,user_ref,meta,settlement_date,card_type
 ```
 
 ### Filter Examples
@@ -157,10 +169,10 @@ filter=merchant_id:eq:123 AND tx_date_time:between:2024-01-01,2024-12-31 AND NOT
 4. **Error Handling**: Test invalid parameters for proper error responses
 
 ### Authentication Testing
-1. **Valid Credentials**: Normal operation testing
-2. **Invalid Credentials**: 401 error testing  
-3. **Development Mode**: DISABLE_AUTH=true testing
-4. **Production Mode**: Full authentication flow
+1. **Token Generation**: Test JWT token creation with valid/invalid credentials
+2. **Token Usage**: Verify automatic token injection in protected requests
+3. **Token Expiration**: Test behavior when tokens expire (24 hour lifetime)
+4. **Token Verification**: Validate token information and expiration status
 
 ## 🌍 Environment Configuration
 
@@ -226,9 +238,10 @@ When API changes occur:
 ### Common Issues
 
 1. **401 Unauthorized**:
+   - Run "Generate JWT Token" to get a new Bearer token
    - Check merchant_id and merchant_password in environment
    - Verify service is running and accessible
-   - Confirm DISABLE_AUTH setting for development
+   - Check console for token expiration warnings
 
 2. **Connection Refused**:
    - Verify base_url in environment

@@ -221,7 +221,7 @@ GET /api/v2/transactions?fields=tx_log_id,amount,merchant_name&filter=merchant_i
 Retrieve single transaction details.
 
 ##### POST /transactions/search
-Advanced search with complex query DSL.
+Advanced search with Elasticsearch-style query DSL and flexible sort formats.
 
 **Request Body:**
 ```json
@@ -240,12 +240,67 @@ Advanced search with complex query DSL.
     }
   },
   "fields": ["tx_log_id", "amount", "merchant_name"],
-  "sort": [{"tx_date_time": {"order": "desc"}}],
+  "sort": [{"tx_date_time": {"order": "desc"}}, {"amount": {"order": "asc"}}],
   "pagination": {"page": 1, "limit": 100},
   "aggregations": {
     "total_amount": {"sum": {"field": "amount"}},
     "avg_amount": {"avg": {"field": "amount"}}
   }
+}
+```
+
+**Search API Sort Formats:**
+The search API supports both Elasticsearch-style and simple sort formats:
+```json
+// Elasticsearch-style (recommended)
+"sort": [
+  {"tx_date_time": {"order": "desc"}},
+  {"amount": {"order": "asc"}}
+]
+
+// Simple format (also supported)  
+"sort": [
+  {"field": "tx_date_time", "direction": "desc"},
+  {"field": "amount", "direction": "asc"}
+]
+```
+
+##### GET /transactions/totals
+Get transaction totals by type for a specific date with optional device/terminal filtering.
+
+**Parameters:**
+```yaml
+Query Parameters:
+  date: string               # Required. Date in YYYY-MM-DD format
+  device_id: string         # Optional. Filter by device ID
+  terminal_id: string       # Optional. Filter by terminal ID  
+  bank_terminal_id: string  # Optional. Filter by bank terminal ID
+```
+
+**Example Request:**
+```bash
+GET /api/v2/transactions/totals?date=2025-08-15&device_id=DEVICE123&terminal_id=TERM456
+```
+
+**Response Schema:**
+```json
+{
+  "date": "2025-08-15",
+  "device_id": "DEVICE123", 
+  "terminal_id": "TERM456",
+  "bank_terminal_id": "",
+  "totals": [
+    {
+      "trx_type": "payment",
+      "trx_descr": "Payment Transaction",
+      "total_amount": 15420.50
+    },
+    {
+      "trx_type": "void", 
+      "trx_descr": "Void Transaction",
+      "total_amount": 320.00
+    }
+  ]
 }
 ```
 
@@ -330,13 +385,13 @@ Specify exactly which fields to return to minimize payload size:
 
 ```bash
 # Basic fields only
-?fields=tx_log_id,amount,merchant_name,tx_date_time
+?fields=payment_tx_log_id,amount,merchant_name,tx_date_time
 
 # Include additional metadata
-?fields=tx_log_id,amount,merchant_name,tx_date_time,response_code,auth_code,rrn,meta
+?fields=payment_tx_log_id,amount,merchant_name,tx_date_time,response_code,auth_code,rrn,meta
 
-# All available fields (default if not specified)
-?fields=tx_log_id,tx_log_type,tx_date_time,amount,merchant_id,merchant_name,device_id,response_code,auth_code,rrn,pan,reversed,settlement_status,stan,user_ref,meta,settlement_date,card_type
+# All available database fields (default when no fields parameter specified)
+# Note: When fields parameter is omitted, ALL database fields are returned
 ```
 
 ---
@@ -435,23 +490,121 @@ spec:
 
 ## Security Implementation
 
-### Authentication & Authorization
+### Authentication Architecture & Design Considerations
 
-#### Basic Authentication (AKEN v1 Compatible)
-```http
-Authorization: Basic <base64(merchant_id:password)>
+The AKEN Reporting Service implements a **hybrid authentication system** designed for optimal security, performance, and developer experience. This section details the architectural decisions and security reasoning.
+
+#### Design Philosophy: Hybrid Authentication Approach
+
+**Why Hybrid?** The system combines the security benefits of request body authentication with the convenience of token-based API access:
+
+1. **Initial Authentication**: Secure credential transmission via request body
+2. **Subsequent Access**: JWT Bearer tokens for all API operations
+
+#### Authentication Flow Architecture
+
+```mermaid
+graph TD
+    A[Client] --> B[POST /api/v2/auth/generate-token]
+    B --> C{Validate Credentials}
+    C --> D[Database Lookup]
+    D --> E[Generate JWT Token]
+    E --> F[Return Token Response]
+    F --> G[Client stores JWT]
+    G --> H[API Requests with Bearer Token]
+    H --> I[JWT Validation Middleware]
+    I --> J[Protected API Access]
 ```
 
-**Implementation Details:**
-- **Merchant Verification**: Database lookup for credential validation
-- **Session Management**: Stateless design with per-request authentication
-- **Password Security**: Supports bcrypt hashing (configurable)
-- **Rate Limiting**: Per-merchant request limiting
+#### Security Comparison: Body vs Header Authentication
 
-#### JWT Token Support (Future Enhancement)
+| Aspect | Request Body (✅ Used) | Basic Auth Headers (❌ Avoided) |
+|--------|----------------------|-------------------------------|
+| **Credential Exposure** | Single request only | Every API request |
+| **Logging Risk** | Lower (bodies rarely logged) | Higher (headers often logged) |
+| **Proxy Caching** | Not cached | May be cached |
+| **Base64 Security** | N/A - HTTPS encrypts body | Easily decoded |
+| **HTTPS Protection** | Full body encryption | Headers + body encrypted |
+| **Industry Standard** | OAuth 2.0 pattern | Legacy approach |
+
+#### JWT Token Authentication
+
+**Current Implementation:**
 ```http
-Authorization: Bearer <jwt_token>
+POST /api/v2/auth/generate-token
+Content-Type: application/json
+
+{
+    "merchant_id": "9cda37a0-4813-11ef-95d7-c5ac867bb9fc",
+    "password": "merchant_password"
+}
 ```
+
+**Response:**
+```json
+{
+    "token": "eyJhbGciOiJIUzI1NiIs...",
+    "expires_in": 86400,
+    "token_type": "Bearer"
+}
+```
+
+**API Access:**
+```http
+GET /api/v2/transactions
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+```
+
+#### Database-Backed Authentication
+
+**Merchant Validation Process:**
+1. **Database Lookup**: Query `merchants` table by `merchant_id`
+2. **Active Status Check**: Verify `active = true`
+3. **Password Validation**: Compare against `password` column
+4. **JWT Generation**: Create signed token with merchant claims
+
+**Security Features:**
+- **Database Integration**: Real-time credential validation against merchants table
+- **Active Status Filtering**: Only active merchants can authenticate
+- **Stateless Design**: No server-side session storage required
+- **Token Expiration**: 24-hour JWT lifetime with expiration validation
+
+#### Password Validation Design Decision
+
+**Implementation Choice: Application-Level Password Comparison**
+
+```go
+// Current Implementation (✅ Recommended)
+err := database.DB.Where("merchant_id = ? AND active = ?", merchantID, true).First(&merchant).Error
+if err != nil {
+    return false
+}
+return password == merchant.Password
+```
+
+**Alternative Considered:**
+```go
+// Database-Level Password Comparison (❌ Not Chosen)
+err := database.DB.Where("merchant_id = ? AND active = ? AND password = ?", merchantID, true, password).First(&merchant).Error
+return err == nil
+```
+
+**Why Application-Level Comparison is Superior:**
+
+| Aspect | Application-Level (✅) | Database-Level (❌) |
+|--------|----------------------|-------------------|
+| **Query Log Security** | Password not in logs | Password appears in logs |
+| **Audit Trail** | Clean database audit logs | Passwords in audit trail |
+| **Future Password Hashing** | Easy to add `bcrypt.CompareHashAndPassword()` | Requires query restructure |
+| **Error Granularity** | Can distinguish merchant vs password errors | Single error type |
+| **Custom Validation** | Can add complexity rules, rate limiting | Limited to database constraints |
+| **Security Best Practices** | Follows OWASP guidelines | Exposes credentials in infrastructure |
+
+**Security Benefits:**
+- **Log Protection**: Database query logs remain password-free
+- **Prepared Statement Safety**: Even with SQL injection, passwords aren't exposed in queries
+- **Hash-Ready Architecture**: Seamless transition to bcrypt/argon2 password hashing
+- **Compliance**: Meets security audit requirements for credential handling
 
 ### Data Security
 

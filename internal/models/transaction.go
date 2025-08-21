@@ -9,7 +9,7 @@ import (
 
 // Transaction represents a payment transaction from the AKEN system
 type Transaction struct {
-	ID                 string          `json:"tx_log_id" gorm:"column:payment_tx_log_id;primaryKey"`
+	ID                 string          `json:"payment_tx_log_id" gorm:"column:payment_tx_log_id;primaryKey"`
 	PaymentTxTypeID    int             `json:"payment_tx_type_id" gorm:"column:payment_tx_type_id"`
 	PaymentProviderID  int             `json:"payment_provider_id" gorm:"column:payment_provider_id"`
 	ReversedTxLogID    *string         `json:"reversed_tx_log_id" gorm:"column:reversed_tx_log_id"`
@@ -37,15 +37,20 @@ type Transaction struct {
 	AdditionalAmount   *string         `json:"additional_amount" gorm:"column:additional_amount"`
 	
 	// Computed fields for API responses
-	Type               string          `json:"tx_log_type" gorm:"-"` // Computed from PaymentTxTypeID
-	MerchantName       string          `json:"merchant_name" gorm:"-"` // Joined from merchants table
-	PAN                *string         `json:"pan" gorm:"-"` // Computed from BinID and PanID
-	ResponseCode       *string         `json:"response_code" gorm:"-"` // Alias for ResultCode
+	Type               string          `json:"tx_log_type" gorm:"column:tx_log_type"` // Computed from PaymentTxTypeID or SQL
+	MerchantName       string          `json:"merchant_name" gorm:"column:merchant_name"` // Joined from merchants table
+	PAN                *string         `json:"pan" gorm:"column:pan"` // Computed from BinID and PanID or SQL
+	ResponseCode       *string         `json:"response_code" gorm:"column:response_code"` // Alias for ResultCode or SQL
 	UserRef            *string         `json:"user_ref" gorm:"-"` // From meta field
 	SettlementDate     *time.Time      `json:"settlement_date" gorm:"-"` // Not in current schema
 	SettlementStatus   *string         `json:"settlement_status" gorm:"-"` // Not in current schema
 	CardType           *string         `json:"card_type" gorm:"-"` // Not in current schema
 	CurrencyInfo       *CurrencyInfo   `json:"currency_info" gorm:"-"` // Currency formatting information
+	
+	// Fields to receive joined data and computed SQL fields
+	CurrencyName       string          `json:"-" gorm:"column:currency_name"` // From currency join
+	CurrDelim          int             `json:"-" gorm:"column:curr_delim"`    // From currency join
+	TxDateTime         string          `json:"tx_date_time" gorm:"column:tx_date_time"` // Formatted datetime from SQL
 }
 
 // TableName returns the table name for GORM
@@ -113,6 +118,7 @@ type Merchant struct {
 	TerminalID               *string   `json:"terminal_id" gorm:"column:terminal_id"`
 	MerchantCode             string    `json:"merchant_code" gorm:"column:merchant_code"`
 	Address                  *string   `json:"address" gorm:"column:address"`
+	Password                 string    `json:"-" gorm:"column:password"` // Hidden from JSON for security
 	Active                   bool      `json:"active" gorm:"column:active"`
 	CreatedAt                time.Time `json:"created_at" gorm:"column:created_at"`
 	UpdatedAt                time.Time `json:"updated_at" gorm:"column:updated_at"`
@@ -210,11 +216,94 @@ type SortParams struct {
 
 // TransactionSearchRequest represents advanced search request body
 type TransactionSearchRequest struct {
-	Query        interface{}       `json:"query"`
-	Fields       []string          `json:"fields"`
-	Sort         []SortParams      `json:"sort"`
-	Pagination   PaginationParams  `json:"pagination"`
+	Query        interface{}            `json:"query"`
+	Fields       []string               `json:"fields"`
+	Sort         []SortParams           `json:"sort"`
+	Pagination   PaginationParams       `json:"pagination"`
 	Aggregations map[string]interface{} `json:"aggregations"`
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling for TransactionSearchRequest
+func (tsr *TransactionSearchRequest) UnmarshalJSON(data []byte) error {
+	// Define a temporary struct to handle the unmarshaling
+	type TempSearchRequest struct {
+		Query        interface{}            `json:"query"`
+		Fields       []string               `json:"fields"`
+		Sort         json.RawMessage        `json:"sort"`
+		Pagination   PaginationParams       `json:"pagination"`
+		Aggregations map[string]interface{} `json:"aggregations"`
+	}
+	
+	var temp TempSearchRequest
+	if err := json.Unmarshal(data, &temp); err != nil {
+		return err
+	}
+	
+	// Copy the straightforward fields
+	tsr.Query = temp.Query
+	tsr.Fields = temp.Fields
+	tsr.Pagination = temp.Pagination
+	tsr.Aggregations = temp.Aggregations
+	
+	// Handle sort parsing - support both formats
+	if len(temp.Sort) > 0 {
+		// Try parsing as Elasticsearch-style sort first
+		var esSort []map[string]interface{}
+		if err := json.Unmarshal(temp.Sort, &esSort); err == nil {
+			// Convert Elasticsearch-style sort to our format
+			for _, sortItem := range esSort {
+				for field, orderSpec := range sortItem {
+					var direction string = "desc" // default
+					
+					if orderMap, ok := orderSpec.(map[string]interface{}); ok {
+						if order, exists := orderMap["order"]; exists {
+							if orderStr, ok := order.(string); ok {
+								direction = orderStr
+							}
+						}
+					} else if orderStr, ok := orderSpec.(string); ok {
+						direction = orderStr
+					}
+					
+					tsr.Sort = append(tsr.Sort, SortParams{
+						Field:     field,
+						Direction: direction,
+					})
+				}
+			}
+		} else {
+			// Fall back to direct SortParams format
+			if err := json.Unmarshal(temp.Sort, &tsr.Sort); err != nil {
+				return fmt.Errorf("failed to parse sort field: %v", err)
+			}
+		}
+	}
+	
+	return nil
+}
+
+// TransactionTotalsRequest represents the request for transaction totals by date and device
+type TransactionTotalsRequest struct {
+	Date             string `json:"date" binding:"required"`              // Date in YYYY-MM-DD format
+	DeviceID         string `json:"device_id,omitempty"`                  // Device ID filter
+	TerminalID       string `json:"terminal_id,omitempty"`                // Terminal ID filter
+	BankTerminalID   string `json:"bank_terminal_id,omitempty"`           // Bank terminal ID filter
+}
+
+// TransactionTotal represents a single transaction type total
+type TransactionTotal struct {
+	TrxType     string  `json:"trx_type"`      // Transaction type (payment, void, refund, etc.)
+	TrxDescr    string  `json:"trx_descr"`     // Transaction description from payment_tx_types.name
+	TotalAmount float64 `json:"total_amount"`  // Total amount for this transaction type
+}
+
+// TransactionTotalsResponse represents the response for transaction totals
+type TransactionTotalsResponse struct {
+	Date             string             `json:"date"`                       // Requested date
+	DeviceID         string             `json:"device_id,omitempty"`        // Device ID if filtered
+	TerminalID       string             `json:"terminal_id,omitempty"`      // Terminal ID if filtered
+	BankTerminalID   string             `json:"bank_terminal_id,omitempty"` // Bank terminal ID if filtered
+	Totals           []TransactionTotal `json:"totals"`                     // Array of transaction totals by type
 }
 
 // CurrencyInfo represents currency formatting information
@@ -268,4 +357,85 @@ type MerchantSummary struct {
 	SuccessRate            float64   `json:"success_rate"`
 	DateFrom               time.Time `json:"date_from"`
 	DateTo                 time.Time `json:"date_to"`
+}
+
+// FilterFields returns a map containing only the requested fields for JSON marshaling
+func (t *Transaction) FilterFields(requestedFields []string) map[string]interface{} {
+	if len(requestedFields) == 0 {
+		// Return all fields if none specified (default behavior)
+		return nil
+	}
+	
+	result := make(map[string]interface{})
+	
+	for _, field := range requestedFields {
+		switch field {
+		case "payment_tx_log_id":
+			result["payment_tx_log_id"] = t.ID
+		case "amount":
+			result["amount"] = t.Amount
+		case "merchant_name":
+			result["merchant_name"] = t.MerchantName
+		case "merchant_id":
+			result["merchant_id"] = t.MerchantID
+		case "response_code":
+			result["response_code"] = t.ResponseCode
+		case "result_code":
+			result["result_code"] = t.ResultCode
+		case "tx_date_time":
+			if t.TxDateTime != "" {
+				// Use the formatted datetime from SQL if available
+				result["tx_date_time"] = t.TxDateTime
+			} else {
+				// Fallback to formatting UpdatedAt
+				result["tx_date_time"] = t.UpdatedAt.UTC().Format("2006-01-02T15:04:05.000Z")
+			}
+		case "tx_log_type":
+			result["tx_log_type"] = t.Type
+		case "currency_code":
+			result["currency_code"] = t.CurrencyCode
+		case "currency_info":
+			result["currency_info"] = t.CurrencyInfo
+		case "rrn":
+			result["rrn"] = t.RRN
+		case "stan":
+			result["stan"] = t.STAN
+		case "auth_code":
+			result["auth_code"] = t.AuthCode
+		case "pan":
+			result["pan"] = t.PAN
+		case "device_id":
+			result["device_id"] = t.DeviceID
+		case "terminal_id":
+			result["terminal_id"] = t.TerminalID
+		case "reversed":
+			result["reversed"] = t.Reversed
+		case "active":
+			result["active"] = t.Active
+		case "completed":
+			result["completed"] = t.Completed
+		case "created_at":
+			result["created_at"] = t.CreatedAt.UTC().Format("2006-01-02T15:04:05.000Z")
+		case "updated_at":
+			result["updated_at"] = t.UpdatedAt.UTC().Format("2006-01-02T15:04:05.000Z")
+		case "user_ref":
+			result["user_ref"] = t.UserRef
+		case "meta":
+			result["meta"] = t.Meta
+		case "description":
+			result["description"] = t.Description
+		case "payment_tx_type_id":
+			result["payment_tx_type_id"] = t.PaymentTxTypeID
+		case "payment_provider_id":
+			result["payment_provider_id"] = t.PaymentProviderID
+		case "settlement_date":
+			result["settlement_date"] = t.SettlementDate
+		case "settlement_status":
+			result["settlement_status"] = t.SettlementStatus
+		case "card_type":
+			result["card_type"] = t.CardType
+		}
+	}
+	
+	return result
 }

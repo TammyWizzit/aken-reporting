@@ -7,8 +7,8 @@ import (
 	"aken_reporting_service/internal/database"
 	"aken_reporting_service/internal/middleware"
 	"aken_reporting_service/internal/services"
+	"aken_reporting_service/internal/utils"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -24,15 +24,26 @@ func main() {
 	// Initialize Redis cache service
 	cacheService, err := services.NewCacheService()
 	if err != nil {
-		log.Printf("Warning: Failed to initialize Redis cache: %v", err)
-		log.Println("Continuing without caching...")
+		utils.LogWarn("Failed to initialize Redis cache", map[string]interface{}{
+			"error": err.Error(),
+		})
+		utils.LogInfo("Continuing without caching", nil)
 	} else {
-		log.Println("Redis cache service initialized successfully")
+		utils.LogInfo("Redis cache service initialized successfully", nil)
 	}
 
-	log.Printf("Starting AKEN Reporting Service on port %s", os.Getenv("PORT"))
+	utils.LogInfo("Starting AKEN Reporting Service", map[string]interface{}{
+		"port": os.Getenv("PORT"),
+	})
 	
-	r := gin.Default()
+	// Create Gin router without default middleware
+	r := gin.New()
+	
+	// Add custom recovery middleware
+	r.Use(gin.Recovery())
+	
+	// Add custom logging middleware
+	r.Use(middleware.LoggingMiddleware())
 	
 	// Disable automatic redirects to prevent 301 redirects for trailing slashes
 	r.RedirectTrailingSlash = false
@@ -58,15 +69,20 @@ func main() {
 	r.Use(middleware.CacheInvalidationMiddleware(cacheService))
 
 	// Check DISABLE_AUTH and skip authentication for development
-	log.Println("=== DEBUG: Starting DISABLE_AUTH check ===")
+	utils.LogTrace("Starting DISABLE_AUTH check", nil)
 	disableAuth := os.Getenv("DISABLE_AUTH")
-	log.Printf("DISABLE_AUTH environment variable: '%s'", disableAuth)
+	utils.LogTrace("DISABLE_AUTH environment variable", map[string]interface{}{
+		"disable_auth": disableAuth,
+	})
 	
 	if disableAuth == "true" {
-		log.Println("DISABLE_AUTH=true, skipping authentication for development")
+		utils.LogInfo("DISABLE_AUTH=true, skipping authentication for development", nil)
 		// Simple development middleware to set merchant info in context
 		r.Use(func(c *gin.Context) {
-			fmt.Printf("=== DEVELOPMENT MIDDLEWARE: Setting merchant info for %s ===\n", c.Request.URL.Path)
+			utils.LogTrace("Setting merchant info for development", map[string]interface{}{
+				"path": c.Request.URL.Path,
+				"merchant_id": "9cda37a0-4813-11ef-95d7-c5ac867bb9fc",
+			})
 			c.Set("merchantID", "9cda37a0-4813-11ef-95d7-c5ac867bb9fc")
 			c.Set("merchant_id", "9cda37a0-4813-11ef-95d7-c5ac867bb9fc")
 			c.Set("merchantName", "NASS WALLET")
@@ -74,8 +90,8 @@ func main() {
 			c.Next()
 		})
 	} else {
-		log.Println("DISABLE_AUTH not set to 'true', enabling authentication...")
-		r.Use(middleware.AuthMiddleware())
+		utils.LogInfo("DISABLE_AUTH not set to 'true', JWT authentication will be applied per route", nil)
+		// JWT middleware is applied per route group in routes.go, not globally
 	}
 
 	// Debug endpoint to check env vars and auth status
@@ -96,7 +112,8 @@ func main() {
 
 	// Set trusted proxies to localhost only for safety
 	if err := r.SetTrustedProxies([]string{"127.0.0.1"}); err != nil {
-		log.Fatalf("Failed to set trusted proxies: %v", err)
+		utils.LogError("Failed to set trusted proxies", err, nil)
+		os.Exit(1)
 	}
 
 	// Simple test endpoint
@@ -130,15 +147,21 @@ func main() {
 		port = "8090" // Different port from main aken service
 	}
 
-	log.Printf("🚀 AKEN Reporting Service starting on port %s", port)
-	log.Printf("📊 Available endpoints:")
-	log.Printf("   GET /api/v2/health - Health check")
-	log.Printf("   GET /api/v2/transactions - List transactions")
-	log.Printf("   GET /api/v2/transactions/:id - Get single transaction")
-	log.Printf("   POST /api/v2/transactions/search - Advanced search")
-	log.Printf("   GET /api/v2/merchants/:id/summary - Merchant summary")
+	utils.LogInfo("AKEN Reporting Service starting", map[string]interface{}{
+		"port": port,
+	})
+	utils.LogTrace("Available endpoints", map[string]interface{}{
+		"endpoints": []string{
+			"GET /api/v2/health - Health check",
+			"GET /api/v2/transactions - List transactions",
+			"GET /api/v2/transactions/:id - Get single transaction",
+			"POST /api/v2/transactions/search - Advanced search",
+			"GET /api/v2/merchants/:id/summary - Merchant summary",
+		},
+	})
 
 	if err := r.Run(fmt.Sprintf(":%s", port)); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+		utils.LogError("Failed to start server", err, nil)
+		os.Exit(1)
 	}
 }

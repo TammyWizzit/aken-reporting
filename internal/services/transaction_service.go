@@ -17,6 +17,7 @@ type TransactionService interface {
 	GetTransactionByID(merchantID, transactionID string, fields []string, timezone string, panFormat string) (*models.Transaction, error)
 	SearchTransactions(merchantID string, searchReq *models.TransactionSearchRequest, timezone string, panFormat string) (*TransactionServiceResult, error)
 	GetMerchantSummary(merchantID string, filter *models.TransactionFilter) (*models.MerchantSummary, error)
+	GetTransactionTotals(merchantID string, request models.TransactionTotalsRequest) (*models.TransactionTotalsResponse, error)
 	ParseAdvancedFilter(filterString, timezone string) (*models.TransactionFilter, error)
 	ParseSort(sortString string) ([]models.SortParams, error)
 	ValidateFields(fields []string) error
@@ -46,6 +47,7 @@ type TransactionServiceResult struct {
 	CurrentPageCount int                  `json:"current_page_count"`
 	HasNext          bool                 `json:"has_next"`
 	HasPrev          bool                 `json:"has_prev"`
+	RequestedFields  []string             `json:"-"` // Internal field, not serialized
 }
 
 func NewTransactionService(transactionRepo repositories.TransactionRepository, cacheService CacheService) TransactionService {
@@ -73,13 +75,13 @@ func (s *transactionService) GetTransactions(merchantID string, params *GetTrans
 	if params.PANFormat == "" {
 		params.PANFormat = "bin_id_and_pan_id"
 	}
-	if len(params.Fields) == 0 {
-		params.Fields = config.DefaultFields
-	}
+	// Don't set default fields - empty fields means return all fields
 	
-	// Validate fields
-	if err := s.ValidateFields(params.Fields); err != nil {
-		return nil, fmt.Errorf("invalid fields: %v", err)
+	// Validate fields if any are specified
+	if len(params.Fields) > 0 {
+		if err := s.ValidateFields(params.Fields); err != nil {
+			return nil, fmt.Errorf("invalid fields: %v", err)
+		}
 	}
 	
 	// Skip caching for transaction data to ensure fresh data
@@ -123,6 +125,7 @@ func (s *transactionService) GetTransactions(merchantID string, params *GetTrans
 		CurrentPageCount: len(result.Transactions),
 		HasNext:          result.Page < result.TotalPages,
 		HasPrev:          result.Page > 1,
+		RequestedFields:  result.RequestedFields,
 	}
 	
 	return serviceResult, nil
@@ -165,9 +168,8 @@ func (s *transactionService) SearchTransactions(merchantID string, searchReq *mo
 	if searchReq.Pagination.Limit > config.MaxPageSize {
 		searchReq.Pagination.Limit = config.MaxPageSize
 	}
-	if len(searchReq.Fields) == 0 {
-		searchReq.Fields = config.DefaultFields
-	}
+	// Don't set default fields - let the repository handle field filtering
+	// Empty fields means return all fields
 	if timezone == "" {
 		timezone = "UTC"
 	}
@@ -194,6 +196,7 @@ func (s *transactionService) SearchTransactions(merchantID string, searchReq *mo
 		CurrentPageCount: len(result.Transactions),
 		HasNext:          result.Page < result.TotalPages,
 		HasPrev:          result.Page > 1,
+		RequestedFields:  result.RequestedFields,
 	}, nil
 }
 
@@ -233,8 +236,8 @@ func (s *transactionService) ParseAdvancedFilter(filterString, timezone string) 
 	
 	filter := &models.TransactionFilter{}
 	
-	// Split by AND/OR (simplified parser)
-	conditions := strings.Split(filterString, " AND ")
+	// Split by AND, but preserve parenthesized groups
+	conditions := s.splitPreservingParentheses(filterString, " AND ")
 	
 	for _, condition := range conditions {
 		condition = strings.TrimSpace(condition)
@@ -243,15 +246,64 @@ func (s *transactionService) ParseAdvancedFilter(filterString, timezone string) 
 		}
 		
 		// Handle OR conditions within this AND group
-		orConditions := strings.Split(condition, " OR ")
-		for _, orCondition := range orConditions {
-			if err := s.parseCondition(strings.TrimSpace(orCondition), filter, timezone); err != nil {
-				return nil, err
+		// If condition starts with '(' and ends with ')', it's a parenthesized group
+		if strings.HasPrefix(condition, "(") && strings.HasSuffix(condition, ")") {
+			// Remove outer parentheses and split by OR
+			innerCondition := strings.Trim(condition, "()")
+			orConditions := strings.Split(innerCondition, " OR ")
+			for _, orCondition := range orConditions {
+				if err := s.parseCondition(strings.TrimSpace(orCondition), filter, timezone); err != nil {
+					return nil, err
+				}
+			}
+		} else {
+			// Handle regular condition (may contain OR)
+			orConditions := strings.Split(condition, " OR ")
+			for _, orCondition := range orConditions {
+				if err := s.parseCondition(strings.TrimSpace(orCondition), filter, timezone); err != nil {
+					return nil, err
+				}
 			}
 		}
 	}
 	
 	return filter, nil
+}
+
+// splitPreservingParentheses splits a string by delimiter while preserving parenthesized groups
+func (s *transactionService) splitPreservingParentheses(input, delimiter string) []string {
+	var result []string
+	var current strings.Builder
+	parenCount := 0
+	i := 0
+	
+	for i < len(input) {
+		if input[i] == '(' {
+			parenCount++
+			current.WriteByte(input[i])
+			i++
+		} else if input[i] == ')' {
+			parenCount--
+			current.WriteByte(input[i])
+			i++
+		} else if parenCount == 0 && i+len(delimiter) <= len(input) && input[i:i+len(delimiter)] == delimiter {
+			// Found delimiter outside parentheses
+			if current.Len() > 0 {
+				result = append(result, current.String())
+				current.Reset()
+			}
+			i += len(delimiter)
+		} else {
+			current.WriteByte(input[i])
+			i++
+		}
+	}
+	
+	if current.Len() > 0 {
+		result = append(result, current.String())
+	}
+	
+	return result
 }
 
 // parseCondition parses a single filter condition
@@ -348,6 +400,10 @@ func (s *transactionService) parseDateCondition(operator, value string, filter *
 		}
 	case "lte":
 		if date, err := parseDateTime(value); err == nil {
+			// If the date is just a date (not a datetime), extend it to end of day
+			if isDateOnly(value) {
+				date = date.Add(24*time.Hour - time.Nanosecond)
+			}
 			filter.DateTimeTo = &date
 		} else {
 			return fmt.Errorf("invalid date format: %s", value)
@@ -363,6 +419,10 @@ func (s *transactionService) parseDateCondition(operator, value string, filter *
 			return fmt.Errorf("invalid from date: %s", parts[0])
 		}
 		if to, err := parseDateTime(strings.TrimSpace(parts[1])); err == nil {
+			// If the "to" date is just a date (not a datetime), extend it to end of day
+			if isDateOnly(strings.TrimSpace(parts[1])) {
+				to = to.Add(24*time.Hour - time.Nanosecond)
+			}
 			filter.DateTimeTo = &to
 		} else {
 			return fmt.Errorf("invalid to date: %s", parts[1])
@@ -474,6 +534,21 @@ func parseDateTime(value string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("unsupported date format: %s", value)
 }
 
+// isDateOnly checks if the date string is just a date (YYYY-MM-DD) without time
+func isDateOnly(dateStr string) bool {
+	dateOnlyFormats := []string{
+		"2006-01-02",
+		"2006/01/02",
+	}
+	
+	for _, format := range dateOnlyFormats {
+		if _, err := time.Parse(format, dateStr); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
 // generateTransactionCacheKey creates a unique cache key for transaction queries
 func (s *transactionService) generateTransactionCacheKey(merchantID string, params *GetTransactionsParams) string {
 	// Create a string representation of the parameters
@@ -564,4 +639,20 @@ func (s *transactionService) generateMerchantSummaryCacheKey(merchantID string, 
 	hash := fmt.Sprintf("%x", md5.Sum([]byte(key)))
 	
 	return fmt.Sprintf("%s:%s", config.GetRedisKeyPrefix(), hash[:16])
+}
+
+// GetTransactionTotals retrieves transaction totals by type for a specific date and device/terminal
+func (s *transactionService) GetTransactionTotals(merchantID string, request models.TransactionTotalsRequest) (*models.TransactionTotalsResponse, error) {
+	// Validate the date format
+	if _, err := time.Parse("2006-01-02", request.Date); err != nil {
+		return nil, fmt.Errorf("invalid date format, expected YYYY-MM-DD: %w", err)
+	}
+	
+	// Call repository method
+	result, err := s.transactionRepo.GetTransactionTotals(merchantID, request)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get transaction totals: %w", err)
+	}
+	
+	return result, nil
 }

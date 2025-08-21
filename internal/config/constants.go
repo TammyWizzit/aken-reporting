@@ -17,7 +17,7 @@ const (
 
 // Field mapping constants for transaction queries
 var FieldMappings = map[string]string{
-	"tx_log_id":        "p.payment_tx_log_id",
+	"payment_tx_log_id": "p.payment_tx_log_id",
 	"tx_log_type":      "CASE WHEN p.payment_tx_type_id = 0 THEN 'payment' WHEN p.payment_tx_type_id = 1 THEN 'reversal' WHEN p.payment_tx_type_id = 2 THEN 'void' WHEN p.payment_tx_type_id = 3 THEN 'refund' WHEN p.payment_tx_type_id = 9 THEN 'mm purchase' WHEN p.payment_tx_type_id = 10 THEN 'mm refund' ELSE 'unknown' END",
 	"tx_date_time":     "p.updated_at",
 	"amount":           "p.amount",
@@ -35,6 +35,7 @@ var FieldMappings = map[string]string{
 	"meta":             "p.meta",
 	"settlement_date":  "p.settlement_date",
 	"card_type":        "p.card_type",
+	"currency_info":    "p.currency_code", // Currency info is computed from currency_code
 }
 
 // Filter operator mappings
@@ -51,6 +52,7 @@ var FilterOperators = map[string]string{
 	"nin":      "NOT IN",
 	"isnull":   "IS NULL",
 	"isnotnull": "IS NOT NULL",
+	"between":  "BETWEEN",
 }
 
 // PAN format mappings
@@ -61,7 +63,7 @@ var PANFormats = map[string]string{
 
 // Default fields to return if none specified
 var DefaultFields = []string{
-	"tx_log_id", "tx_log_type", "tx_date_time", "amount",
+	"payment_tx_log_id", "tx_log_type", "tx_date_time", "amount",
 	"merchant_name", "response_code", "rrn", "pan", "currency_info",
 }
 
@@ -79,6 +81,7 @@ const (
 	ErrorCodeInternalError   = "INTERNAL_SERVER_ERROR"
 	ErrorCodeNotImplemented  = "NOT_IMPLEMENTED"
 	ErrorCodeBadRequest      = "BAD_REQUEST"
+	ErrorCodeInvalidRequest  = "INVALID_REQUEST"
 	ErrorCodeServiceUnavailable = "SERVICE_UNAVAILABLE"
 )
 
@@ -96,6 +99,7 @@ var ErrorMessages = map[string]string{
 	ErrorCodeInternalError:   "An internal error occurred. Please try again later.",
 	ErrorCodeNotImplemented:  "This feature is not yet implemented.",
 	ErrorCodeBadRequest:      "Invalid request. Please check your parameters.",
+	ErrorCodeInvalidRequest:  "Invalid request format or missing required fields.",
 	ErrorCodeServiceUnavailable: "Service temporarily unavailable. Please try again later.",
 }
 

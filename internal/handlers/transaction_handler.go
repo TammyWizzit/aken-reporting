@@ -10,6 +10,7 @@ import (
 	"aken_reporting_service/internal/config"
 	"aken_reporting_service/internal/models"
 	"aken_reporting_service/internal/services"
+	"aken_reporting_service/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -28,9 +29,19 @@ func NewTransactionHandler(transactionService services.TransactionService) *Tran
 func (h *TransactionHandler) GetTransactions(c *gin.Context) {
 	merchantID := getMerchantID(c)
 	if merchantID == "" {
+		utils.LogWarn("Unauthorized transaction request - missing merchant ID", map[string]interface{}{
+			"path": c.Request.URL.Path,
+			"remote_addr": c.ClientIP(),
+		})
 		h.sendErrorResponse(c, http.StatusUnauthorized, config.ErrorCodeAuthFailed, "Invalid or missing authentication credentials", nil)
 		return
 	}
+
+	utils.LogTrace("Transactions request received", map[string]interface{}{
+		"merchant_id": merchantID,
+		"path": c.Request.URL.Path,
+		"query_params": c.Request.URL.RawQuery,
+	})
 
 	// Parse query parameters
 	fieldsParam := c.Query("fields")
@@ -88,8 +99,12 @@ func (h *TransactionHandler) GetTransactions(c *gin.Context) {
 	// Get transactions
 	result, err := h.transactionService.GetTransactions(merchantID, params)
 	if err != nil {
-		// Log the actual error for debugging
-		fmt.Printf("Database error in GetTransactions: %v\n", err)
+		utils.LogError("Database error in GetTransactions", err, map[string]interface{}{
+			"merchant_id": merchantID,
+			"page": page,
+			"limit": limit,
+			"filter": filterParam,
+		})
 		
 		// Check if this is an internal error that should be sanitized
 		if config.IsInternalError(err) {
@@ -101,9 +116,32 @@ func (h *TransactionHandler) GetTransactions(c *gin.Context) {
 		return
 	}
 
-	// Build response
+	utils.LogTrace("Transactions request returning result", map[string]interface{}{
+		"merchant_id": merchantID,
+		"row_count": len(result.Transactions),
+		"total_count": result.TotalCount,
+		"page": result.Page,
+	})
+
+	// Build response with proper field handling
+	var responseData interface{}
+	
+	if len(fields) > 0 {
+		// Specific fields requested - apply field filtering
+		var filteredData []map[string]interface{}
+		for _, tx := range result.Transactions {
+			filteredTx := tx.FilterFields(fields)
+			filteredData = append(filteredData, filteredTx)
+		}
+		responseData = filteredData
+	} else {
+		// No fields specified - return all fields in proper JSON format
+		// The postProcessTransactions should have set the computed fields correctly
+		responseData = result.Transactions
+	}
+
 	response := gin.H{
-		"data": result.Transactions,
+		"data": responseData,
 		"meta": gin.H{
 			"pagination": gin.H{
 				"page":              result.Page,
@@ -219,8 +257,30 @@ func (h *TransactionHandler) AdvancedTransactionSearch(c *gin.Context) {
 		}
 	}
 
+	// Build response with field filtering
+	var responseData interface{}
+	
+	// Determine which fields to use for filtering  
+	fieldsToUse := result.RequestedFields
+	if len(fieldsToUse) == 0 && len(searchReq.Fields) > 0 {
+		fieldsToUse = searchReq.Fields
+	}
+	
+	if len(fieldsToUse) > 0 {
+		// Apply field filtering
+		var filteredData []map[string]interface{}
+		for _, tx := range result.Transactions {
+			filteredTx := tx.FilterFields(fieldsToUse)
+			filteredData = append(filteredData, filteredTx)
+		}
+		responseData = filteredData
+	} else {
+		// For search endpoint, if no fields specified, return all fields
+		responseData = result.Transactions
+	}
+
 	response := gin.H{
-		"data": result.Transactions,
+		"data": responseData,
 		"meta": gin.H{
 			"pagination": gin.H{
 				"page":        result.Page,
@@ -324,6 +384,16 @@ func (h *TransactionHandler) GetMerchantTransactions(c *gin.Context) {
 // Helper functions
 
 func (h *TransactionHandler) sendErrorResponse(c *gin.Context, statusCode int, errorCode, message string, details interface{}) {
+	merchantID := getMerchantID(c)
+	
+	utils.LogWarn("Sending error response", map[string]interface{}{
+		"merchant_id": merchantID,
+		"status_code": statusCode,
+		"error_code": errorCode,
+		"path": c.Request.URL.Path,
+		"remote_addr": c.ClientIP(),
+	})
+	
 	// Use user-friendly message if available
 	userMessage := config.GetUserFriendlyMessage(errorCode)
 	if message != "" {
@@ -421,4 +491,78 @@ func parseCommaSeparated(input string) []string {
 		}
 	}
 	return result
+}
+
+// GetTransactionTotals handles GET /api/v2/transactions/totals
+func (h *TransactionHandler) GetTransactionTotals(c *gin.Context) {
+	merchantID := getMerchantID(c)
+	if merchantID == "" {
+		utils.LogWarn("Unauthorized transaction totals request - missing merchant ID", map[string]interface{}{
+			"path":        c.Request.URL.Path,
+			"remote_addr": c.ClientIP(),
+		})
+		h.sendErrorResponse(c, http.StatusUnauthorized, config.ErrorCodeAuthFailed, "Invalid or missing authentication credentials", nil)
+		return
+	}
+
+	// Parse query parameters instead of JSON body
+	dateParam := c.Query("date")
+	deviceID := c.Query("device_id")
+	terminalID := c.Query("terminal_id")
+	bankTerminalID := c.Query("bank_terminal_id")
+
+	// Validate required date parameter
+	if dateParam == "" {
+		utils.LogWarn("Missing required date parameter", map[string]interface{}{
+			"merchant_id": merchantID,
+			"path":        c.Request.URL.Path,
+		})
+		h.sendErrorResponse(c, http.StatusBadRequest, config.ErrorCodeBadRequest, "Date parameter is required (format: YYYY-MM-DD)", nil)
+		return
+	}
+
+	// Build request struct from query parameters
+	request := models.TransactionTotalsRequest{
+		Date:           dateParam,
+		DeviceID:       deviceID,
+		TerminalID:     terminalID,
+		BankTerminalID: bankTerminalID,
+	}
+
+	utils.LogTrace("Transaction totals request received", map[string]interface{}{
+		"merchant_id":       merchantID,
+		"date":              request.Date,
+		"device_id":         request.DeviceID,
+		"terminal_id":       request.TerminalID,
+		"bank_terminal_id":  request.BankTerminalID,
+		"path":              c.Request.URL.Path,
+		"query_params":      c.Request.URL.RawQuery,
+	})
+
+	// Get transaction totals
+	result, err := h.transactionService.GetTransactionTotals(merchantID, request)
+	if err != nil {
+		utils.LogError("Error getting transaction totals", err, map[string]interface{}{
+			"merchant_id": merchantID,
+			"date":        request.Date,
+			"device_id":   request.DeviceID,
+		})
+
+		// Check if this is an internal error that should be sanitized
+		if config.IsInternalError(err) {
+			h.sendErrorResponse(c, http.StatusServiceUnavailable, config.ErrorCodeServiceUnavailable, "",
+				gin.H{"retry_after": 30})
+		} else {
+			h.sendErrorResponse(c, http.StatusInternalServerError, config.ErrorCodeDatabaseError, "", nil)
+		}
+		return
+	}
+
+	utils.LogTrace("Transaction totals request returning result", map[string]interface{}{
+		"merchant_id":  merchantID,
+		"date":         result.Date,
+		"totals_count": len(result.Totals),
+	})
+
+	c.JSON(http.StatusOK, result)
 }

@@ -20,7 +20,7 @@ func TestPaginationConstants(t *testing.T) {
 func TestFieldMappings(t *testing.T) {
 	// Test that all expected field mappings exist
 	expectedFields := []string{
-		"tx_log_id", "tx_log_type", "tx_date_time", "amount",
+		"payment_tx_log_id", "tx_log_type", "tx_date_time", "amount",
 		"merchant_id", "merchant_name", "device_id", "response_code",
 		"auth_code", "rrn", "pan", "reversed", "settlement_status",
 		"stan", "user_ref", "meta", "settlement_date", "card_type",
@@ -39,7 +39,7 @@ func TestFilterOperators(t *testing.T) {
 	// Test that all expected operators exist
 	expectedOperators := []string{
 		"eq", "ne", "gt", "gte", "lt", "lte",
-		"like", "ilike", "in", "nin", "isnull", "isnotnull",
+		"like", "ilike", "in", "nin", "isnull", "isnotnull", "between",
 	}
 
 	for _, op := range expectedOperators {
@@ -69,7 +69,7 @@ func TestPANFormats(t *testing.T) {
 func TestDefaultFields(t *testing.T) {
 	// Test that default fields are not empty
 	assert.NotEmpty(t, DefaultFields)
-	assert.Len(t, DefaultFields, 8) // Should have 8 default fields
+	assert.Len(t, DefaultFields, 9) // Should have 9 default fields
 
 	// Test that all default fields have mappings
 	for _, field := range DefaultFields {
@@ -114,7 +114,7 @@ func TestFieldMappingValues(t *testing.T) {
 		field    string
 		expected string
 	}{
-		{"tx_log_id", "p.payment_tx_log_id"},
+		{"payment_tx_log_id", "p.payment_tx_log_id"},
 		{"amount", "p.amount"},
 		{"merchant_id", "m.merchant_id"},
 		{"merchant_name", "m.name"},
@@ -146,6 +146,7 @@ func TestFilterOperatorValues(t *testing.T) {
 		{"ilike", "ILIKE"},
 		{"in", "IN"},
 		{"nin", "NOT IN"},
+		{"between", "BETWEEN"},
 		{"isnull", "IS NULL"},
 		{"isnotnull", "IS NOT NULL"},
 	}

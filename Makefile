@@ -12,13 +12,6 @@ gobuild:
 	@go mod tidy
 	@echo "✅ Go dependencies ready"
 
-blue:
-	$(MAKE) gobuild
-	@echo "🔵 Building blue deployment..."
-	docker-compose build blue
-	$(MAKE) push APP=blue
-	@echo "✅ Blue deployment complete"
-
 build:
 	@echo "🏗️  Building production image..."
 	make gobuild

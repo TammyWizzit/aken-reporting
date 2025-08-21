@@ -14,6 +14,8 @@ import (
 	"gorm.io/gorm"
 )
 
+var startTime = time.Now()
+
 // SetupRoutes initializes all API routes with dependency injection following the household project pattern
 func SetupRoutes(router *gin.Engine, db *gorm.DB, cacheService services.CacheService) {
 	// Apply global middleware
@@ -32,12 +34,16 @@ func SetupRoutes(router *gin.Engine, db *gorm.DB, cacheService services.CacheSer
 
 	// Initialize handlers
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
+	authHandler := handlers.NewAuthHandler()
+
+	// Register authentication routes (for testing and development)
+	RegisterAuthRoutes(v2, authHandler)
 
 	// Register transaction routes
 	RegisterTransactionRoutes(v2, transactionHandler)
 
-	// Health check endpoint
-	v2.GET("/health", func(c *gin.Context) {
+	// Health check endpoint (supports both GET and HEAD)
+	healthHandler := func(c *gin.Context) {
 		// Check database health
 		dbHealth := database.CheckDatabaseHealth()
 		
@@ -58,7 +64,11 @@ func SetupRoutes(router *gin.Engine, db *gorm.DB, cacheService services.CacheSer
 			"uptime":    time.Since(startTime).Seconds(),
 			"database":  dbHealth,
 		})
-	})
+	}
+	
+	// Register health endpoint for both GET and HEAD requests
+	v2.GET("/health", healthHandler)
+	v2.HEAD("/health", healthHandler)
 
 	// API info endpoint
 	v2.GET("/info", func(c *gin.Context) {
@@ -71,6 +81,7 @@ func SetupRoutes(router *gin.Engine, db *gorm.DB, cacheService services.CacheSer
 					"list":           "GET /api/v2/transactions",
 					"get":            "GET /api/v2/transactions/:id",
 					"search":         "POST /api/v2/transactions/search",
+					"totals":         "GET /api/v2/transactions/totals",
 					"export":         "POST /api/v2/transactions/export (coming soon)",
 					"batch":          "POST /api/v2/transactions/batch (coming soon)",
 				},
@@ -101,14 +112,30 @@ func SetupRoutes(router *gin.Engine, db *gorm.DB, cacheService services.CacheSer
 	})
 }
 
+// RegisterAuthRoutes sets up authentication routes for token generation and verification
+func RegisterAuthRoutes(rg *gin.RouterGroup, handler *handlers.AuthHandler) {
+	auth := rg.Group("/auth")
+	{
+		// Public endpoints for token generation (development/testing)
+		auth.POST("/generate-token", handler.GenerateToken)
+		
+		// Protected endpoint for token verification
+		auth.GET("/verify-token", middleware.JWTAuthMiddleware(), handler.VerifyToken)
+	}
+}
+
 // RegisterTransactionRoutes sets up all transaction-related routes
 func RegisterTransactionRoutes(rg *gin.RouterGroup, handler *handlers.TransactionHandler) {
+	// Apply JWT authentication to all transaction routes
+	// Dev mode handling is done at the middleware level in main.go
 	transactions := rg.Group("/transactions")
+	transactions.Use(middleware.JWTAuthMiddleware())
 	{
-		// Core transaction endpoints
+		// Core transaction endpoints - each merchant can only see their own data
 		transactions.GET("", handler.GetTransactions)
 		transactions.GET("/:id", handler.GetTransactionByID)
 		transactions.POST("/search", handler.AdvancedTransactionSearch)
+		transactions.GET("/totals", handler.GetTransactionTotals)
 
 		// Future endpoints (placeholders)
 		transactions.POST("/export", handleNotImplemented("Transaction export"))
@@ -116,8 +143,9 @@ func RegisterTransactionRoutes(rg *gin.RouterGroup, handler *handlers.Transactio
 		transactions.GET("/stream", handleNotImplemented("Real-time transaction stream"))
 	}
 
-	// Merchant-specific routes
+	// Merchant-specific routes - protected by JWT authentication
 	merchants := rg.Group("/merchants")
+	merchants.Use(middleware.JWTAuthMiddleware())
 	{
 		merchants.GET("/:merchant_id/summary", handler.GetMerchantSummary)
 		merchants.GET("/:merchant_id/transactions", handler.GetMerchantTransactions)
@@ -149,5 +177,3 @@ func handleNotImplemented(feature string) gin.HandlerFunc {
 		})
 	}
 }
-
-var startTime = time.Now()

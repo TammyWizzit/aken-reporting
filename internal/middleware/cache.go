@@ -35,6 +35,12 @@ func CacheMiddleware(cacheService services.CacheService) gin.HandlerFunc {
 			return
 		}
 
+		// Skip caching for /transactions endpoints to prevent stale data during development/testing
+		if strings.Contains(c.Request.URL.Path, "/transactions") {
+			c.Next()
+			return
+		}
+
 		// Generate cache key from request
 		cacheKey := generateCacheKey(c)
 		
