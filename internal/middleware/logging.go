@@ -30,7 +30,7 @@ func RequestLoggingMiddleware() gin.HandlerFunc {
 		start := time.Now()
 		path := c.Request.URL.Path
 		raw := c.Request.URL.RawQuery
-		
+
 		if raw != "" {
 			path = path + "?" + raw
 		}
@@ -56,7 +56,7 @@ func RequestLoggingMiddleware() gin.HandlerFunc {
 
 		// Calculate latency
 		latency := time.Since(start)
-		
+
 		// Log request completion
 		utils.LogHTTPRequest(
 			c.Request.Method,

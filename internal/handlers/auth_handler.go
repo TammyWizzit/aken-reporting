@@ -84,7 +84,7 @@ func (ah *AuthHandler) GenerateToken(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"token":     token,
+		"token":      token,
 		"expires_in": expiresIn,
 		"token_type": "Bearer",
 	})

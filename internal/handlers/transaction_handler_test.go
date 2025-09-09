@@ -38,11 +38,11 @@ func TestParseCommaSeparated(t *testing.T) {
 func TestGetMerchantID(t *testing.T) {
 	// Setup
 	gin.SetMode(gin.TestMode)
-	
+
 	// Test with merchant context
 	ctx, _ := gin.CreateTestContext(nil)
 	ctx.Set("merchantID", "test-merchant")
-	
+
 	result := getMerchantID(ctx)
 	assert.Equal(t, "test-merchant", result)
 }
@@ -50,10 +50,10 @@ func TestGetMerchantID(t *testing.T) {
 func TestGetMerchantID_Empty(t *testing.T) {
 	// Setup
 	gin.SetMode(gin.TestMode)
-	
+
 	// Test without merchant context
 	ctx, _ := gin.CreateTestContext(nil)
-	
+
 	result := getMerchantID(ctx)
 	assert.Equal(t, "", result)
 }
@@ -62,7 +62,7 @@ func TestSendErrorResponse(t *testing.T) {
 	// Setup
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	
+
 	router.GET("/test", func(c *gin.Context) {
 		handler := &TransactionHandler{}
 		handler.sendErrorResponse(c, 400, "TEST_ERROR", "Test error message", map[string]interface{}{"detail": "test detail"})
@@ -75,15 +75,15 @@ func TestSendErrorResponse(t *testing.T) {
 
 	// Assertions
 	assert.Equal(t, 400, w.Code)
-	
+
 	var response map[string]interface{}
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
-	
+
 	errorObj := response["error"].(map[string]interface{})
 	assert.Equal(t, "TEST_ERROR", errorObj["code"])
 	assert.Equal(t, "Test error message", errorObj["message"])
-	
+
 	// Check if details exist (it's optional)
 	if details, exists := errorObj["detail"]; exists {
 		assert.Equal(t, "test detail", details)

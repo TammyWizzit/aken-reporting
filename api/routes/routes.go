@@ -23,11 +23,12 @@ func SetupRoutes(router *gin.Engine, db *gorm.DB, cacheService services.CacheSer
 	router.Use(middleware.ResponseHeadersMiddleware())
 	router.Use(middleware.CORSMiddleware())
 
-	// Create API version group
+	// Create API version groups
+	v1 := router.Group("/api/v1")
 	v2 := router.Group("/api/v2")
 
-	// Initialize repositories
-	transactionRepo := repositories.NewTransactionRepository(db)
+	// Initialize repositories with both databases
+	transactionRepo := repositories.NewTransactionRepository(database.DB, database.MySQLDB)
 
 	// Initialize services
 	transactionService := services.NewTransactionService(transactionRepo, cacheService)
@@ -42,20 +43,23 @@ func SetupRoutes(router *gin.Engine, db *gorm.DB, cacheService services.CacheSer
 	// Register transaction routes
 	RegisterTransactionRoutes(v2, transactionHandler)
 
+	// Register v1 transaction lookup route
+	RegisterV1TransactionRoutes(v1, transactionHandler)
+
 	// Health check endpoint (supports both GET and HEAD)
 	healthHandler := func(c *gin.Context) {
 		// Check database health
 		dbHealth := database.CheckDatabaseHealth()
-		
+
 		// Determine overall status
 		status := "healthy"
 		httpStatus := http.StatusOK
-		
+
 		if dbHealth.Status != "healthy" {
 			status = "degraded"
 			httpStatus = http.StatusServiceUnavailable
 		}
-		
+
 		c.JSON(httpStatus, gin.H{
 			"status":    status,
 			"service":   config.ServiceName,
@@ -65,7 +69,7 @@ func SetupRoutes(router *gin.Engine, db *gorm.DB, cacheService services.CacheSer
 			"database":  dbHealth,
 		})
 	}
-	
+
 	// Register health endpoint for both GET and HEAD requests
 	v2.GET("/health", healthHandler)
 	v2.HEAD("/health", healthHandler)
@@ -78,12 +82,12 @@ func SetupRoutes(router *gin.Engine, db *gorm.DB, cacheService services.CacheSer
 			"description": "Modern RESTful API for AKEN transaction reporting",
 			"endpoints": gin.H{
 				"transactions": gin.H{
-					"list":           "GET /api/v2/transactions",
-					"get":            "GET /api/v2/transactions/:id",
-					"search":         "POST /api/v2/transactions/search",
-					"totals":         "GET /api/v2/transactions/totals",
-					"export":         "POST /api/v2/transactions/export (coming soon)",
-					"batch":          "POST /api/v2/transactions/batch (coming soon)",
+					"list":   "GET /api/v2/transactions",
+					"get":    "GET /api/v2/transactions/:id",
+					"search": "POST /api/v2/transactions/search",
+					"totals": "GET /api/v2/transactions/totals",
+					"export": "POST /api/v2/transactions/export (coming soon)",
+					"batch":  "POST /api/v2/transactions/batch (coming soon)",
 				},
 				"merchants": gin.H{
 					"summary":      "GET /api/v2/merchants/:id/summary",
@@ -118,7 +122,7 @@ func RegisterAuthRoutes(rg *gin.RouterGroup, handler *handlers.AuthHandler) {
 	{
 		// Public endpoints for token generation (development/testing)
 		auth.POST("/generate-token", handler.GenerateToken)
-		
+
 		// Protected endpoint for token verification
 		auth.GET("/verify-token", middleware.JWTAuthMiddleware(), handler.VerifyToken)
 	}
@@ -163,6 +167,22 @@ func RegisterTransactionRoutes(rg *gin.RouterGroup, handler *handlers.Transactio
 	{
 		exports.GET("/:export_id", handleNotImplemented("Export status checking"))
 		exports.GET("/:export_id/download", handleNotImplemented("Export download"))
+	}
+}
+
+// RegisterV1TransactionRoutes sets up v1 efinance transaction routes
+func RegisterV1TransactionRoutes(rg *gin.RouterGroup, handler *handlers.TransactionHandler) {
+	efinance := rg.Group("/efinance")
+	efinance.Use(middleware.JWTAuthMiddleware())
+	efinance.Use(middleware.UseMySQLMiddleware()) // Use MySQL for efinance APIs
+	{
+		transactions := efinance.Group("/transactions")
+		{
+			// V1 efinance transaction totals endpoint
+			transactions.POST("/totals", handler.GetTransactionLookup)
+			// V1 efinance transaction lookup endpoint
+			transactions.POST("/lookup", handler.SearchTransactionDetails)
+		}
 	}
 }
 

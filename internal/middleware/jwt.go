@@ -21,6 +21,15 @@ type TokenClaims struct {
 // JWTAuthMiddleware provides JWT authentication middleware
 func JWTAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Skip authentication if disabled for development
+		if config.IsDevMode() {
+			c.Set("merchantID", "9cda37a0-4813-11ef-95d7-c5ac867bb9fc")
+			c.Set("merchant_id", "9cda37a0-4813-11ef-95d7-c5ac867bb9fc")
+			c.Set("merchantName", "NASS WALLET")
+			c.Set("authenticated", true)
+			c.Next()
+			return
+		}
 
 		// Get Authorization header
 		authHeader := c.GetHeader("Authorization")

@@ -1,0 +1,659 @@
+{
+	"info": {
+		"_postman_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+		"name": "EFinance Transaction APIs",
+		"description": "Collection for EFinance Transaction Reporting Service APIs including authentication and transaction endpoints",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "12345678"
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Generate JWT Token",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.environment.set(\"jwt_token\", response.token);",
+									"    pm.environment.set(\"token_expires_in\", response.expires_in);",
+									"    console.log(\"JWT token saved to environment variable\");",
+									"} else {",
+									"    console.log(\"Failed to generate token:\", pm.response.text());",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Request-ID",
+								"value": "{{$randomUUID}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"merchant_id\": \"{{merchant_id}}\",\n    \"password\": \"{{merchant_password}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v2/auth/generate-token",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v2",
+								"auth",
+								"generate-token"
+							]
+						},
+						"description": "Generate a JWT token for authentication using merchant credentials"
+					},
+					"response": [
+						{
+							"name": "Success Response",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"merchant_id\": \"MERCHANT001\",\n    \"password\": \"password123\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v2/auth/generate-token",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v2",
+										"auth",
+										"generate-token"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n    \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n    \"expires_in\": 86400,\n    \"token_type\": \"Bearer\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Verify JWT Token",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{jwt_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Request-ID",
+								"value": "{{$randomUUID}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v2/auth/verify-token",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v2",
+								"auth",
+								"verify-token"
+							]
+						},
+						"description": "Verify the validity of a JWT token"
+					},
+					"response": [
+						{
+							"name": "Valid Token Response",
+							"originalRequest": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v2/auth/verify-token",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v2",
+										"auth",
+										"verify-token"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n    \"valid\": true,\n    \"merchant_id\": \"MERCHANT001\",\n    \"merchant_name\": \"Test Merchant\",\n    \"timestamp\": \"2024-01-15T10:30:45.123Z\"\n}"
+						}
+					]
+				}
+			],
+			"description": "Authentication endpoints for JWT token generation and verification"
+		},
+		{
+			"name": "EFinance Transactions",
+			"item": [
+				{
+					"name": "Get Transaction Totals",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has required fields\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('date');",
+									"    pm.expect(jsonData).to.have.property('device_id');",
+									"    pm.expect(jsonData).to.have.property('totals');",
+									"    pm.expect(jsonData.totals).to.be.an('array');",
+									"});",
+									"",
+									"pm.test(\"Each total has required fields\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    if (jsonData.totals.length > 0) {",
+									"        const total = jsonData.totals[0];",
+									"        pm.expect(total).to.have.property('trx_descr');",
+									"        pm.expect(total).to.have.property('total_amount_egp');",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{jwt_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Request-ID",
+								"value": "{{$randomUUID}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"date\": \"{{transaction_date}}\",\n    \"device_id\": \"{{device_id}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/efinance/transactions/totals",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"efinance",
+								"transactions",
+								"totals"
+							]
+						},
+						"description": "Get transaction totals by description for a specific date and device"
+					},
+					"response": [
+						{
+							"name": "Success Response",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"date\": \"2024-01-15\",\n    \"device_id\": \"DEV001\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/efinance/transactions/totals",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"efinance",
+										"transactions",
+										"totals"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n    \"date\": \"2024-01-15\",\n    \"device_id\": \"DEV001\",\n    \"totals\": [\n        {\n            \"trx_descr\": \"Purchase\",\n            \"total_amount_egp\": 1250.75\n        },\n        {\n            \"trx_descr\": \"Cash Withdrawal\",\n            \"total_amount_egp\": 500.00\n        },\n        {\n            \"trx_descr\": \"Balance Inquiry\",\n            \"total_amount_egp\": 0.00\n        }\n    ]\n}"
+						}
+					]
+				},
+				{
+					"name": "Search Transaction Details",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has transactions array\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('transactions');",
+									"    pm.expect(jsonData.transactions).to.be.an('array');",
+									"});",
+									"",
+									"pm.test(\"Each transaction has required fields\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    if (jsonData.transactions.length > 0) {",
+									"        const transaction = jsonData.transactions[0];",
+									"        pm.expect(transaction).to.have.property('datetime');",
+									"        pm.expect(transaction).to.have.property('STAN');",
+									"        pm.expect(transaction).to.have.property('RRN');",
+									"        pm.expect(transaction).to.have.property('BIN');",
+									"        pm.expect(transaction).to.have.property('PANID');",
+									"        pm.expect(transaction).to.have.property('device_id');",
+									"        pm.expect(transaction).to.have.property('amount');",
+									"        pm.expect(transaction).to.have.property('RC');",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{jwt_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Request-ID",
+								"value": "{{$randomUUID}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"panid\": \"{{panid}}\",\n    \"trx_rrn\": \"{{trx_rrn}}\",\n    \"device_id\": \"{{device_id}}\",\n    \"bank_group_id\": \"{{bank_group_id}}\",\n    \"amount\": {{amount}},\n    \"trx_descr\": \"{{trx_descr}}\",\n    \"date\": \"{{transaction_date}}\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/efinance/transactions/lookup",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v1",
+								"efinance",
+								"transactions",
+								"lookup"
+							]
+						},
+						"description": "Search for detailed transaction information based on multiple search criteria"
+					},
+					"response": [
+						{
+							"name": "Success Response",
+							"originalRequest": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"panid\": \"1234\",\n    \"trx_rrn\": \"000000123456\",\n    \"device_id\": \"DEV001\",\n    \"bank_group_id\": \"BANK001\",\n    \"amount\": 10000,\n    \"trx_descr\": \"Purchase\",\n    \"date\": \"2024-01-15\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/efinance/transactions/lookup",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"efinance",
+										"transactions",
+										"lookup"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n    \"transactions\": [\n        {\n            \"datetime\": \"2024-01-15T14:30:45\",\n            \"STAN\": 123456,\n            \"RRN\": \"000000123456\",\n            \"BIN\": \"123456\",\n            \"PANID\": \"1234\",\n            \"device_id\": \"DEV001\",\n            \"group_id\": \"GROUP001\",\n            \"trx_descr\": \"Purchase\",\n            \"trx_type\": \"00\",\n            \"bank_group_id\": \"BANK001\",\n            \"transaction_code\": \"TXN001\",\n            \"amount\": 10000,\n            \"RC\": \"00\",\n            \"trx_auth_code\": \"123456\"\n        }\n    ]\n}"
+						}
+					]
+				}
+			],
+			"description": "EFinance specific transaction endpoints for totals and detailed search"
+		},
+		{
+			"name": "Health Check",
+			"item": [
+				{
+					"name": "Service Health",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v2/health",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v2",
+								"health"
+							]
+						},
+						"description": "Check the health status of the service and its dependencies"
+					},
+					"response": [
+						{
+							"name": "Healthy Service",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v2/health",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v2",
+										"health"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n    \"status\": \"healthy\",\n    \"service\": \"aken-reporting-service\",\n    \"version\": \"v2.0.0\",\n    \"timestamp\": \"2024-01-15T10:30:45.123Z\",\n    \"uptime\": 3600.5,\n    \"database\": {\n        \"status\": \"healthy\",\n        \"response_time_ms\": 2.5\n    }\n}"
+						}
+					]
+				},
+				{
+					"name": "API Info",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v2/info",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"v2",
+								"info"
+							]
+						},
+						"description": "Get information about the API and available endpoints"
+					},
+					"response": [
+						{
+							"name": "API Information",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v2/info",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v2",
+										"info"
+									]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"cookie": [],
+							"body": "{\n    \"service\": \"aken-reporting-service\",\n    \"version\": \"v2.0.0\",\n    \"description\": \"Modern RESTful API for AKEN transaction reporting\",\n    \"endpoints\": {\n        \"transactions\": {\n            \"list\": \"GET /api/v2/transactions\",\n            \"get\": \"GET /api/v2/transactions/:id\",\n            \"search\": \"POST /api/v2/transactions/search\",\n            \"totals\": \"GET /api/v2/transactions/totals\"\n        },\n        \"merchants\": {\n            \"summary\": \"GET /api/v2/merchants/:id/summary\",\n            \"transactions\": \"GET /api/v2/merchants/:id/transactions\"\n        },\n        \"system\": {\n            \"health\": \"GET /api/v2/health\",\n            \"info\": \"GET /api/v2/info\"\n        }\n    }\n}"
+						}
+					]
+				}
+			],
+			"description": "System health and information endpoints"
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Set default values if environment variables are not set",
+					"if (!pm.environment.get(\"base_url\")) {",
+					"    pm.environment.set(\"base_url\", \"http://localhost:8080\");",
+					"}",
+					"",
+					"if (!pm.environment.get(\"merchant_id\")) {",
+					"    pm.environment.set(\"merchant_id\", \"MERCHANT001\");",
+					"}",
+					"",
+					"if (!pm.environment.get(\"merchant_password\")) {",
+					"    pm.environment.set(\"merchant_password\", \"password123\");",
+					"}",
+					"",
+					"if (!pm.environment.get(\"transaction_date\")) {",
+					"    const today = new Date().toISOString().split('T')[0];",
+					"    pm.environment.set(\"transaction_date\", today);",
+					"}",
+					"",
+					"if (!pm.environment.get(\"device_id\")) {",
+					"    pm.environment.set(\"device_id\", \"DEV001\");",
+					"}",
+					"",
+					"if (!pm.environment.get(\"panid\")) {",
+					"    pm.environment.set(\"panid\", \"1234\");",
+					"}",
+					"",
+					"if (!pm.environment.get(\"trx_rrn\")) {",
+					"    pm.environment.set(\"trx_rrn\", \"000000123456\");",
+					"}",
+					"",
+					"if (!pm.environment.get(\"bank_group_id\")) {",
+					"    pm.environment.set(\"bank_group_id\", \"BANK001\");",
+					"}",
+					"",
+					"if (!pm.environment.get(\"amount\")) {",
+					"    pm.environment.set(\"amount\", \"10000\");",
+					"}",
+					"",
+					"if (!pm.environment.get(\"trx_descr\")) {",
+					"    pm.environment.set(\"trx_descr\", \"Purchase\");",
+					"}"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Global test to check response time",
+					"pm.test(\"Response time is less than 5000ms\", function () {",
+					"    pm.expect(pm.response.responseTime).to.be.below(5000);",
+					"});",
+					"",
+					"// Global test to check for proper Content-Type header",
+					"pm.test(\"Content-Type is application/json\", function () {",
+					"    if (pm.response.headers.get(\"Content-Type\")) {",
+					"        pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+					"    }",
+					"});"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8080",
+			"type": "string"
+		},
+		{
+			"key": "merchant_id",
+			"value": "MERCHANT001",
+			"type": "string"
+		},
+		{
+			"key": "merchant_password",
+			"value": "password123",
+			"type": "string"
+		},
+		{
+			"key": "transaction_date",
+			"value": "2024-01-15",
+			"type": "string"
+		},
+		{
+			"key": "device_id",
+			"value": "DEV001",
+			"type": "string"
+		},
+		{
+			"key": "panid",
+			"value": "1234",
+			"type": "string"
+		},
+		{
+			"key": "trx_rrn",
+			"value": "000000123456",
+			"type": "string"
+		},
+		{
+			"key": "bank_group_id",
+			"value": "BANK001",
+			"type": "string"
+		},
+		{
+			"key": "amount",
+			"value": "10000",
+			"type": "string"
+		},
+		{
+			"key": "trx_descr",
+			"value": "Purchase",
+			"type": "string"
+		}
+	]
+}

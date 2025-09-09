@@ -18,9 +18,12 @@ type TransactionService interface {
 	SearchTransactions(merchantID string, searchReq *models.TransactionSearchRequest, timezone string, panFormat string) (*TransactionServiceResult, error)
 	GetMerchantSummary(merchantID string, filter *models.TransactionFilter) (*models.MerchantSummary, error)
 	GetTransactionTotals(merchantID string, request models.TransactionTotalsRequest) (*models.TransactionTotalsResponse, error)
+	GetTransactionLookup(request models.TransactionLookupRequest) (*models.TransactionLookupResponse, error)
+	SearchTransactionDetails(request models.IsoTransactionSearchRequest) (*models.IsoTransactionSearchResponse, error)
 	ParseAdvancedFilter(filterString, timezone string) (*models.TransactionFilter, error)
 	ParseSort(sortString string) ([]models.SortParams, error)
 	ValidateFields(fields []string) error
+	SetUseMysql(useMysql bool) // Add method to set database preference
 }
 
 type transactionService struct {
@@ -57,6 +60,11 @@ func NewTransactionService(transactionRepo repositories.TransactionRepository, c
 	}
 }
 
+// SetUseMysql sets the database preference flag on the repository
+func (s *transactionService) SetUseMysql(useMysql bool) {
+	s.transactionRepo.SetUseMysql(useMysql)
+}
+
 // GetTransactions retrieves filtered, sorted, and paginated transactions
 func (s *transactionService) GetTransactions(merchantID string, params *GetTransactionsParams) (*TransactionServiceResult, error) {
 	// Validate and set defaults
@@ -76,25 +84,25 @@ func (s *transactionService) GetTransactions(merchantID string, params *GetTrans
 		params.PANFormat = "bin_id_and_pan_id"
 	}
 	// Don't set default fields - empty fields means return all fields
-	
+
 	// Validate fields if any are specified
 	if len(params.Fields) > 0 {
 		if err := s.ValidateFields(params.Fields); err != nil {
 			return nil, fmt.Errorf("invalid fields: %v", err)
 		}
 	}
-	
+
 	// Skip caching for transaction data to ensure fresh data
 	// Transaction data changes frequently and users need latest information
-	
+
 	pagination := models.PaginationParams{
 		Page:  params.Page,
 		Limit: params.Limit,
 	}
-	
+
 	// Use retry logic for database operations
 	retryConfig := database.DefaultRetryConfig()
-	
+
 	var result *repositories.TransactionListResult
 	err := database.RetryWithBackoff(func() error {
 		var dbErr error
@@ -109,12 +117,12 @@ func (s *transactionService) GetTransactions(merchantID string, params *GetTrans
 		)
 		return dbErr
 	}, retryConfig)
-	
+
 	if err != nil {
 		// Don't wrap the error to avoid exposing internal details
 		return nil, err
 	}
-	
+
 	// Return fresh transaction data without caching
 	serviceResult := &TransactionServiceResult{
 		Transactions:     result.Transactions,
@@ -127,7 +135,7 @@ func (s *transactionService) GetTransactions(merchantID string, params *GetTrans
 		HasPrev:          result.Page > 1,
 		RequestedFields:  result.RequestedFields,
 	}
-	
+
 	return serviceResult, nil
 }
 
@@ -142,17 +150,17 @@ func (s *transactionService) GetTransactionByID(merchantID, transactionID string
 	if panFormat == "" {
 		panFormat = "bin_id_and_pan_id"
 	}
-	
+
 	// Validate fields
 	if err := s.ValidateFields(fields); err != nil {
 		return nil, fmt.Errorf("invalid fields: %v", err)
 	}
-	
+
 	transaction, err := s.transactionRepo.GetTransactionByID(merchantID, transactionID, fields, timezone, panFormat)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return transaction, nil
 }
 
@@ -176,17 +184,17 @@ func (s *transactionService) SearchTransactions(merchantID string, searchReq *mo
 	if panFormat == "" {
 		panFormat = "bin_id_and_pan_id"
 	}
-	
+
 	// Validate fields
 	if err := s.ValidateFields(searchReq.Fields); err != nil {
 		return nil, fmt.Errorf("invalid fields: %v", err)
 	}
-	
+
 	result, err := s.transactionRepo.SearchTransactions(merchantID, searchReq, timezone, panFormat)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &TransactionServiceResult{
 		Transactions:     result.Transactions,
 		TotalCount:       result.TotalCount,
@@ -204,27 +212,27 @@ func (s *transactionService) SearchTransactions(merchantID string, searchReq *mo
 func (s *transactionService) GetMerchantSummary(merchantID string, filter *models.TransactionFilter) (*models.MerchantSummary, error) {
 	// Generate cache key for merchant summary
 	cacheKey := s.generateMerchantSummaryCacheKey(merchantID, filter)
-	
+
 	// Try to get from cache first (summaries can be cached)
 	if s.cacheService != nil {
 		if cachedSummary, err := s.cacheService.GetCachedMerchantSummary(cacheKey); err == nil && cachedSummary != nil {
 			return cachedSummary, nil
 		}
 	}
-	
+
 	// Cache miss - calculate summary from database
 	summary, err := s.transactionRepo.GetMerchantSummary(merchantID, filter)
 	if err != nil {
 		// Don't wrap the error to avoid exposing internal details
 		return nil, err
 	}
-	
+
 	// Cache the summary for 30 minutes (aggregated data is safe to cache)
 	if s.cacheService != nil {
 		ttl := config.GetRedisTTL()
 		s.cacheService.SetCachedMerchantSummary(cacheKey, summary, ttl)
 	}
-	
+
 	return summary, nil
 }
 
@@ -233,18 +241,18 @@ func (s *transactionService) ParseAdvancedFilter(filterString, timezone string) 
 	if filterString == "" {
 		return &models.TransactionFilter{}, nil
 	}
-	
+
 	filter := &models.TransactionFilter{}
-	
+
 	// Split by AND, but preserve parenthesized groups
 	conditions := s.splitPreservingParentheses(filterString, " AND ")
-	
+
 	for _, condition := range conditions {
 		condition = strings.TrimSpace(condition)
 		if condition == "" {
 			continue
 		}
-		
+
 		// Handle OR conditions within this AND group
 		// If condition starts with '(' and ends with ')', it's a parenthesized group
 		if strings.HasPrefix(condition, "(") && strings.HasSuffix(condition, ")") {
@@ -266,7 +274,7 @@ func (s *transactionService) ParseAdvancedFilter(filterString, timezone string) 
 			}
 		}
 	}
-	
+
 	return filter, nil
 }
 
@@ -276,7 +284,7 @@ func (s *transactionService) splitPreservingParentheses(input, delimiter string)
 	var current strings.Builder
 	parenCount := 0
 	i := 0
-	
+
 	for i < len(input) {
 		if input[i] == '(' {
 			parenCount++
@@ -298,11 +306,11 @@ func (s *transactionService) splitPreservingParentheses(input, delimiter string)
 			i++
 		}
 	}
-	
+
 	if current.Len() > 0 {
 		result = append(result, current.String())
 	}
-	
+
 	return result
 }
 
@@ -312,16 +320,16 @@ func (s *transactionService) parseCondition(condition string, filter *models.Tra
 	if len(parts) < 3 {
 		return fmt.Errorf("invalid filter condition: %s", condition)
 	}
-	
+
 	field := parts[0]
 	operator := parts[1]
 	value := strings.Join(parts[2:], ":")
-	
+
 	// Validate operator
 	if _, exists := config.FilterOperators[operator]; !exists {
 		return fmt.Errorf("invalid operator '%s' for field '%s'", operator, field)
 	}
-	
+
 	switch field {
 	case "merchant_id":
 		if operator == "eq" {
@@ -350,7 +358,7 @@ func (s *transactionService) parseCondition(condition string, filter *models.Tra
 	default:
 		return fmt.Errorf("unsupported filter field: %s", field)
 	}
-	
+
 	return nil
 }
 
@@ -385,7 +393,7 @@ func (s *transactionService) parseAmountCondition(operator, value string, filter
 			return fmt.Errorf("invalid max amount: %s", parts[1])
 		}
 	}
-	
+
 	return nil
 }
 
@@ -428,7 +436,7 @@ func (s *transactionService) parseDateCondition(operator, value string, filter *
 			return fmt.Errorf("invalid to date: %s", parts[1])
 		}
 	}
-	
+
 	return nil
 }
 
@@ -437,39 +445,39 @@ func (s *transactionService) ParseSort(sortString string) ([]models.SortParams, 
 	if sortString == "" {
 		return []models.SortParams{{Field: "tx_date_time", Direction: "desc"}}, nil
 	}
-	
+
 	var sortParams []models.SortParams
 	parts := strings.Split(sortString, ",")
-	
+
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue
 		}
-		
+
 		fieldDirection := strings.Split(part, ":")
 		field := fieldDirection[0]
 		direction := "asc"
-		
+
 		if len(fieldDirection) > 1 {
 			direction = strings.ToLower(fieldDirection[1])
 		}
-		
+
 		if direction != "asc" && direction != "desc" {
 			return nil, fmt.Errorf("invalid sort direction '%s' for field '%s'", direction, field)
 		}
-		
+
 		// Validate field exists in mappings
 		if _, exists := config.FieldMappings[field]; !exists && field != "tx_date_time" {
 			return nil, fmt.Errorf("invalid sort field: %s", field)
 		}
-		
+
 		sortParams = append(sortParams, models.SortParams{
 			Field:     field,
 			Direction: direction,
 		})
 	}
-	
+
 	return sortParams, nil
 }
 
@@ -479,19 +487,19 @@ func (s *transactionService) ValidateFields(fields []string) error {
 	for field := range config.FieldMappings {
 		validFields[field] = true
 	}
-	
+
 	// Add some additional valid fields
 	validFields["created_at"] = true
 	validFields["updated_at"] = true
 	validFields["description"] = true
 	validFields["currency_info"] = true
-	
+
 	for _, field := range fields {
 		if !validFields[field] {
 			return fmt.Errorf("invalid field: %s", field)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -506,7 +514,7 @@ func parseAmount(value string) (int64, error) {
 		}
 		return int64(amount * 100), nil
 	}
-	
+
 	var amount int64
 	if _, err := fmt.Sscanf(value, "%d", &amount); err != nil {
 		return 0, err
@@ -524,13 +532,13 @@ func parseDateTime(value string) (time.Time, error) {
 		"2006/01/02 15:04:05",
 		"2006/01/02",
 	}
-	
+
 	for _, format := range formats {
 		if t, err := time.Parse(format, value); err == nil {
 			return t, nil
 		}
 	}
-	
+
 	return time.Time{}, fmt.Errorf("unsupported date format: %s", value)
 }
 
@@ -540,7 +548,7 @@ func isDateOnly(dateStr string) bool {
 		"2006-01-02",
 		"2006/01/02",
 	}
-	
+
 	for _, format := range dateOnlyFormats {
 		if _, err := time.Parse(format, dateStr); err == nil {
 			return true
@@ -560,12 +568,12 @@ func (s *transactionService) generateTransactionCacheKey(merchantID string, para
 		fmt.Sprintf("timezone:%s", params.Timezone),
 		fmt.Sprintf("pan_format:%s", params.PANFormat),
 	}
-	
+
 	// Add fields
 	if len(params.Fields) > 0 {
 		keyParts = append(keyParts, fmt.Sprintf("fields:%s", strings.Join(params.Fields, ",")))
 	}
-	
+
 	// Add sort parameters
 	if len(params.Sort) > 0 {
 		sortParts := make([]string, len(params.Sort))
@@ -574,7 +582,7 @@ func (s *transactionService) generateTransactionCacheKey(merchantID string, para
 		}
 		keyParts = append(keyParts, fmt.Sprintf("sort:%s", strings.Join(sortParts, ",")))
 	}
-	
+
 	// Add filter parameters
 	if params.Filter != nil {
 		if params.Filter.MerchantID != nil {
@@ -602,11 +610,11 @@ func (s *transactionService) generateTransactionCacheKey(merchantID string, para
 			keyParts = append(keyParts, fmt.Sprintf("filter_date_to:%s", params.Filter.DateTimeTo.Format(time.RFC3339)))
 		}
 	}
-	
+
 	// Join all parts and create a hash
 	key := strings.Join(keyParts, "|")
 	hash := fmt.Sprintf("%x", md5.Sum([]byte(key)))
-	
+
 	return fmt.Sprintf("%s:%s", config.GetRedisKeyPrefix(), hash[:16])
 }
 
@@ -617,7 +625,7 @@ func (s *transactionService) generateMerchantSummaryCacheKey(merchantID string, 
 		"summary",
 		merchantID,
 	}
-	
+
 	// Add filter parameters if present
 	if filter != nil {
 		if filter.DateTimeFrom != nil {
@@ -633,11 +641,11 @@ func (s *transactionService) generateMerchantSummaryCacheKey(merchantID string, 
 			keyParts = append(keyParts, fmt.Sprintf("max_amount:%d", *filter.AmountMax))
 		}
 	}
-	
+
 	// Join all parts and create a hash
 	key := strings.Join(keyParts, "|")
 	hash := fmt.Sprintf("%x", md5.Sum([]byte(key)))
-	
+
 	return fmt.Sprintf("%s:%s", config.GetRedisKeyPrefix(), hash[:16])
 }
 
@@ -647,11 +655,66 @@ func (s *transactionService) GetTransactionTotals(merchantID string, request mod
 	if _, err := time.Parse("2006-01-02", request.Date); err != nil {
 		return nil, fmt.Errorf("invalid date format, expected YYYY-MM-DD: %w", err)
 	}
-	
+
+	// Note: device_id is optional - if not provided, totals will be returned for all devices
+
 	// Call repository method
 	result, err := s.transactionRepo.GetTransactionTotals(merchantID, request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transaction totals: %w", err)
+	}
+
+	return result, nil
+}
+
+// GetTransactionLookup retrieves transaction totals by description for a specific date and device
+func (s *transactionService) GetTransactionLookup(request models.TransactionLookupRequest) (*models.TransactionLookupResponse, error) {
+	// Validate the date format
+	if _, err := time.Parse("2006-01-02", request.Date); err != nil {
+		return nil, fmt.Errorf("invalid date format, expected YYYY-MM-DD: %w", err)
+	}
+
+	// Note: device_id is optional - if not provided, totals will be returned for all devices
+
+	// Call repository method
+	result, err := s.transactionRepo.GetTransactionLookup(request)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get transaction lookup: %w", err)
+	}
+
+	return result, nil
+}
+// SearchTransactionDetails searches for detailed transaction information based on multiple criteria
+func (s *transactionService) SearchTransactionDetails(request models.IsoTransactionSearchRequest) (*models.IsoTransactionSearchResponse, error) {
+	// Validate the date format
+	if _, err := time.Parse("2006-01-02", request.Date); err != nil {
+		return nil, fmt.Errorf("invalid date format, expected YYYY-MM-DD: %w", err)
+	}
+	
+	// Validate required fields
+	if request.DeviceID == "" {
+		return nil, fmt.Errorf("device_id is required")
+	}
+	if request.TrxRRN == "" {
+		return nil, fmt.Errorf("trx_rrn is required")
+	}
+	if request.PanID == "" {
+		return nil, fmt.Errorf("panid is required")
+	}
+	if request.BankGroupID == "" {
+		return nil, fmt.Errorf("bank_group_id is required")
+	}
+	if request.Amount == 0 {
+		return nil, fmt.Errorf("amount must be greater than 0")
+	}
+	if request.TrxDescr == "" {
+		return nil, fmt.Errorf("trx_descr is required")
+	}
+	
+	// Call repository method
+	result, err := s.transactionRepo.SearchTransactionDetails(request)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search transaction details: %w", err)
 	}
 	
 	return result, nil

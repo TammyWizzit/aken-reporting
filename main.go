@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-	config.LoadEnv() // Load environment variables from .env file
+	config.LoadEnv()     // Load environment variables from .env file
 	database.ConnectDB() // Connect to the database
 
 	// Initialize Redis cache service
@@ -35,16 +35,16 @@ func main() {
 	utils.LogInfo("Starting AKEN Reporting Service", map[string]interface{}{
 		"port": os.Getenv("PORT"),
 	})
-	
+
 	// Create Gin router without default middleware
 	r := gin.New()
-	
+
 	// Add custom recovery middleware
 	r.Use(gin.Recovery())
-	
+
 	// Add custom logging middleware
 	r.Use(middleware.LoggingMiddleware())
-	
+
 	// Disable automatic redirects to prevent 301 redirects for trailing slashes
 	r.RedirectTrailingSlash = false
 	r.RedirectFixedPath = false
@@ -52,9 +52,9 @@ func main() {
 	// Configure CORS
 	corsConfig := cors.DefaultConfig()
 	corsConfig.AllowOrigins = []string{
-		"http://localhost:8080", 
-		"http://localhost:5173", 
-		"http://localhost:3000", 
+		"http://localhost:8080",
+		"http://localhost:5173",
+		"http://localhost:3000",
 		"http://localhost:3001",
 		"https://aken-eu.staging.wizzitdigital.com",
 	}
@@ -74,13 +74,13 @@ func main() {
 	utils.LogTrace("DISABLE_AUTH environment variable", map[string]interface{}{
 		"disable_auth": disableAuth,
 	})
-	
+
 	if disableAuth == "true" {
 		utils.LogInfo("DISABLE_AUTH=true, skipping authentication for development", nil)
 		// Simple development middleware to set merchant info in context
 		r.Use(func(c *gin.Context) {
 			utils.LogTrace("Setting merchant info for development", map[string]interface{}{
-				"path": c.Request.URL.Path,
+				"path":        c.Request.URL.Path,
 				"merchant_id": "9cda37a0-4813-11ef-95d7-c5ac867bb9fc",
 			})
 			c.Set("merchantID", "9cda37a0-4813-11ef-95d7-c5ac867bb9fc")
@@ -98,15 +98,15 @@ func main() {
 	r.GET("/debug", func(c *gin.Context) {
 		merchantID, _ := c.Get("merchantID")
 		authenticated, _ := c.Get("authenticated")
-		
+
 		c.JSON(200, gin.H{
-			"service": "AKEN Reporting Service",
-			"version": "2.0.0",
-			"DISABLE_AUTH": os.Getenv("DISABLE_AUTH"),
-			"ENV": os.Getenv("ENV"),
-			"merchantID": merchantID,
+			"service":       "AKEN Reporting Service",
+			"version":       "2.0.0",
+			"DISABLE_AUTH":  os.Getenv("DISABLE_AUTH"),
+			"ENV":           os.Getenv("ENV"),
+			"merchantID":    merchantID,
 			"authenticated": authenticated,
-			"timestamp": os.Getenv("TIMESTAMP"),
+			"timestamp":     os.Getenv("TIMESTAMP"),
 		})
 	})
 
@@ -119,7 +119,7 @@ func main() {
 	// Simple test endpoint
 	r.GET("/simple-test", func(c *gin.Context) {
 		c.JSON(200, gin.H{
-			"message": "AKEN Reporting Service is running!", 
+			"message": "AKEN Reporting Service is running!",
 			"service": "aken-reporting-service",
 			"version": "2.0.0",
 		})
@@ -132,9 +132,9 @@ func main() {
 	r.NoRoute(func(c *gin.Context) {
 		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
 			c.JSON(http.StatusNotFound, gin.H{
-				"code": "ENDPOINT_NOT_FOUND",
-				"message": fmt.Sprintf("API endpoint %s %s not found", c.Request.Method, c.Request.URL.Path),
-				"timestamp": "2025-01-28T10:30:00.000Z",
+				"code":       "ENDPOINT_NOT_FOUND",
+				"message":    fmt.Sprintf("API endpoint %s %s not found", c.Request.Method, c.Request.URL.Path),
+				"timestamp":  "2025-01-28T10:30:00.000Z",
 				"request_id": c.GetHeader("X-Request-ID"),
 			})
 			return

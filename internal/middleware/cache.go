@@ -43,7 +43,7 @@ func CacheMiddleware(cacheService services.CacheService) gin.HandlerFunc {
 
 		// Generate cache key from request
 		cacheKey := generateCacheKey(c)
-		
+
 		// Try to get from cache
 		var cachedResponse map[string]interface{}
 		if err := cacheService.Get(cacheKey, &cachedResponse); err == nil && cachedResponse != nil {
@@ -55,11 +55,11 @@ func CacheMiddleware(cacheService services.CacheService) gin.HandlerFunc {
 
 		// Store original response writer
 		originalWriter := c.Writer
-		
+
 		// Create custom response writer to capture response
 		responseWriter := &responseCapture{
 			ResponseWriter: originalWriter,
-			body:          make([]byte, 0),
+			body:           make([]byte, 0),
 		}
 		c.Writer = responseWriter
 
@@ -73,7 +73,7 @@ func CacheMiddleware(cacheService services.CacheService) gin.HandlerFunc {
 				// Add cache metadata
 				responseData["cached"] = false
 				responseData["cache_timestamp"] = time.Now().Unix()
-				
+
 				// Cache the response
 				ttl := config.GetRedisTTL()
 				cacheService.Set(cacheKey, responseData, ttl)
@@ -99,7 +99,7 @@ func CacheInvalidationMiddleware(cacheService services.CacheService) gin.Handler
 			if merchantID != "" {
 				// Invalidate transaction cache
 				cacheService.InvalidateTransactionCache(merchantID)
-				
+
 				// Invalidate merchant cache
 				cacheService.InvalidateMerchantCache(merchantID)
 			}
@@ -138,7 +138,7 @@ func generateCacheKey(c *gin.Context) string {
 	// Create hash of the key parts
 	key := strings.Join(parts, "|")
 	hash := md5.Sum([]byte(key))
-	
+
 	return fmt.Sprintf("%s:api:%x", config.GetRedisKeyPrefix(), hash[:8])
 }
 
@@ -169,7 +169,7 @@ func CacheControlMiddleware() gin.HandlerFunc {
 		// Add cache control headers
 		c.Header("Cache-Control", "private, max-age=300") // 5 minutes
 		c.Header("Vary", "Accept, Authorization")
-		
+
 		c.Next()
 	}
 }

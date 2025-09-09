@@ -4,69 +4,97 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
+	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/schema"
 )
 
-var DB *gorm.DB
+var DB *gorm.DB        // PostgreSQL database for v2 APIs
+var MySQLDB *gorm.DB   // MySQL database for efinance v1 APIs
 
-// ConnectDB initializes the database connection to the existing AKEN database
+// ConnectDB initializes both database connections
 func ConnectDB() {
+	connectPostgreSQL()
+	connectMySQL()
+}
+
+// connectPostgreSQL initializes the PostgreSQL connection for v2 APIs
+func connectPostgreSQL() {
 	var err error
+	
+	// PostgreSQL connection string
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		getEnvOrDefault("PMT_TX_DB_HOST", "portal_db"),
-		getEnvOrDefault("PMT_TX_DB_PORT", "5432"),
-		getEnvOrDefault("PMT_TX_DB_USER", "wizzit_pay"),
-		getEnvOrDefault("PMT_TX_DB_PASSWORD", "wizzit_pay"),
-		getEnvOrDefault("PMT_TX_DB_DATABASE", "wizzit_pay"),
+		getEnvOrDefault("POSTGRES_HOST", "10.100.18.32"),
+		getEnvOrDefault("POSTGRES_PORT", "5432"),
+		getEnvOrDefault("POSTGRES_USER", "wizzit_pay"),
+		getEnvOrDefault("POSTGRES_PASSWORD", "wizzit_pay"),
+		getEnvOrDefault("POSTGRES_DB", "wizzit_pay"),
+	)
+	
+	log.Printf("Connecting to PostgreSQL database: host=%s port=%s dbname=%s user=%s",
+		getEnvOrDefault("POSTGRES_HOST", "10.100.18.32"),
+		getEnvOrDefault("POSTGRES_PORT", "5432"),
+		getEnvOrDefault("POSTGRES_DB", "wizzit_pay"),
+		getEnvOrDefault("POSTGRES_USER", "wizzit_pay"),
 	)
 
-	log.Printf("Connecting to database: host=%s port=%s dbname=%s user=%s", 
-		getEnvOrDefault("PMT_TX_DB_HOST", "portal_db"),
-		getEnvOrDefault("PMT_TX_DB_PORT", "5432"),
-		getEnvOrDefault("PMT_TX_DB_DATABASE", "wizzit_pay"),
-		getEnvOrDefault("PMT_TX_DB_USER", "wizzit_pay"),
-	)
-
-	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
-		// Disable automatic pluralization since we're using existing tables
-		NamingStrategy: &NamingStrategy{},
-	})
+	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Printf("⚠️ Failed to connect to PostgreSQL database: %v", err)
+		log.Printf("Continuing without PostgreSQL connection...")
+	} else {
+		log.Println("✅ PostgreSQL database connection established successfully")
 	}
+}
 
-	log.Println("✅ Database connection established successfully")
+// connectMySQL initializes the MySQL connection for efinance v1 APIs  
+func connectMySQL() {
+	var err error
 	
-	// Test the connection with a simple query
-	if err := testConnection(); err != nil {
-		log.Fatalf("Database connection test failed: %v", err)
+	// MySQL connection string for efinance APIs
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+		getEnvOrDefault("MYSQL_USER", "atlas"),
+		getEnvOrDefault("MYSQL_PASSWORD", "wizzitSTG11!#"),
+		getEnvOrDefault("MYSQL_HOST", "10.100.18.31"),
+		getEnvOrDefault("MYSQL_PORT", "3306"),
+		getEnvOrDefault("MYSQL_DATABASE", "atlas"),
+	)
+	
+	log.Printf("Connecting to MySQL database: host=%s port=%s dbname=%s user=%s",
+		getEnvOrDefault("MYSQL_HOST", "10.100.18.31"),
+		getEnvOrDefault("MYSQL_PORT", "3306"),
+		getEnvOrDefault("MYSQL_DATABASE", "atlas"),
+		getEnvOrDefault("MYSQL_USER", "atlas"),
+	)
+
+	MySQLDB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	if err != nil {
+		log.Printf("⚠️ Failed to connect to MySQL database: %v", err)
+		log.Printf("Continuing without MySQL connection...")
+	} else {
+		log.Println("✅ MySQL database connection established successfully")
 	}
-	
-	log.Println("✅ Database connection test passed")
 }
 
 // testConnection verifies the database connection works
-func testConnection() error {
+func testConnection(db *gorm.DB) error {
+	if db == nil {
+		return fmt.Errorf("database connection is nil")
+	}
+
 	var result int
-	err := DB.Raw("SELECT 1").Scan(&result).Error
+	err := db.Raw("SELECT 1").Scan(&result).Error
 	if err != nil {
 		return fmt.Errorf("failed to execute test query: %v", err)
 	}
-	
-	// Test that we can access the main tables we need
-	var count int64
-	if err := DB.Raw("SELECT COUNT(*) FROM merchants LIMIT 1").Scan(&count).Error; err != nil {
-		return fmt.Errorf("failed to access merchants table: %v", err)
+
+	if result != 1 {
+		return fmt.Errorf("test query returned unexpected result: %d", result)
 	}
-	
-	if err := DB.Raw("SELECT COUNT(*) FROM payment_tx_log LIMIT 1").Scan(&count).Error; err != nil {
-		return fmt.Errorf("failed to access payment_tx_log table: %v", err)
-	}
-	
-	log.Printf("✅ Successfully verified access to core tables")
+
+	log.Printf("✅ Successfully verified database connection")
 	return nil
 }
 
@@ -78,34 +106,15 @@ func getEnvOrDefault(key, defaultValue string) string {
 	return defaultValue
 }
 
-// Custom naming strategy to work with existing AKEN table structure
-type NamingStrategy struct{}
-
-func (ns NamingStrategy) TableName(str string) string {
-	// Return table names as-is since we're using existing AKEN tables
-	return str
+// getDefaultPort returns the default port for the given database type
+func getDefaultPort(dbType string) string {
+	switch strings.ToLower(dbType) {
+	case "postgres", "postgresql":
+		return "5432"
+	case "mysql":
+		return "3306"
+	default:
+		return "3306"
+	}
 }
 
-func (ns NamingStrategy) SchemaName(table string) string {
-	return ""
-}
-
-func (ns NamingStrategy) ColumnName(table, column string) string {
-	return column
-}
-
-func (ns NamingStrategy) JoinTableName(joinTable string) string {
-	return joinTable
-}
-
-func (ns NamingStrategy) RelationshipFKName(relationship schema.Relationship) string {
-	return relationship.Name
-}
-
-func (ns NamingStrategy) CheckerName(table, column string) string {
-	return ""
-}
-
-func (ns NamingStrategy) IndexName(table, column string) string {
-	return ""
-}

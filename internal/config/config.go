@@ -20,31 +20,48 @@ func LoadEnv() {
 
 // GetDatabaseURL returns the database connection URL
 func GetDatabaseURL() string {
-	host := os.Getenv("DB_HOST")
-	port := os.Getenv("DB_PORT") 
-	user := os.Getenv("DB_USER")
-	password := os.Getenv("DB_PASSWORD")
-	dbname := os.Getenv("DB_NAME")
+	host := os.Getenv("AKEN_REPORTING_DB_HOST")
+	port := os.Getenv("AKEN_REPORTING_DB_PORT")
+	user := os.Getenv("AKEN_REPORTING_DB_USER")
+	password := os.Getenv("AKEN_REPORTING_DB_PASSWORD")
+	dbname := os.Getenv("AKEN_REPORTING_DB_NAME")
 
 	if host == "" {
-		host = "localhost"
+		log.Fatal("AKEN_REPORTING_DB_HOST environment variable is required")
 	}
 	if port == "" {
 		port = "5432"
 	}
 	if user == "" {
-		user = "wizzit_pay"
+		log.Fatal("AKEN_REPORTING_DB_USER environment variable is required")
 	}
 	if password == "" {
-		password = "wizzit_pay"
-	}
+		log.Fatal("AKEN_REPORTING_DB_PASSWORD environment variable is required")
+		}
 	if dbname == "" {
-		dbname = "wizzit_pay"
-	}
+		log.Fatal("AKEN_REPORTING_DB_NAME environment variable is required")}
 
-	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", 
-		host, port, user, password, dbname)
+	return fmt.Sprintf("host=%s port=%s user=%s  dbname=%s sslmode=disable",
+		host, port, user, dbname)
 }
+
+	// 		// host = "10.100.18.31"
+	// if host == "" {
+	// 	log.Fatal("AKEN_REPORTING_DB_HOST environment variable is required")
+	// }
+	// if port == "" {
+	// 	port = "9088"
+	// }
+	// if user == "" {
+	// 	user = "atlas"
+	// }
+	// if password == "" {
+	// 	password = "wizzitSTG11!#"
+	// }
+	// if dbname == "" {
+	// 	dbname = "atlas_db"
+	// }
+
 
 // GetPort returns the server port
 func GetPort() string {

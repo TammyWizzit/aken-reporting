@@ -45,26 +45,8 @@ services:
     image: aken-reporting-service
     ports:
       - "8090:8090"
-    environment:
-      - PORT=8090
-      - ENV=production
-      - GIN_MODE=release
-      # Database connection
-      - PMT_TX_DB_HOST=postgres
-      - PMT_TX_DB_PORT=5432
-      - PMT_TX_DB_USER=wizzit_pay
-      - PMT_TX_DB_PASSWORD=wizzit_pay
-      - PMT_TX_DB_DATABASE=wizzit_pay
-      # Redis configuration
-      - REDIS_ENABLED=true
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=
-      - REDIS_DB=0
-      - REDIS_POOL_SIZE=10
-      - REDIS_TIMEOUT=5
-      - REDIS_TTL_SECONDS=1800
-      - REDIS_KEY_PREFIX=aken:reporting
+    env_file:
+      - .env
     depends_on:
       - postgres
       - redis

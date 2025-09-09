@@ -20,22 +20,22 @@ type CacheService interface {
 	GetCachedTransactions(key string) (*repositories.TransactionListResult, error)
 	SetCachedTransactions(key string, result *repositories.TransactionListResult, ttl time.Duration) error
 	InvalidateTransactionCache(merchantID string) error
-	
+
 	// Merchant caching
 	GetCachedMerchant(merchantID string) (*models.Merchant, error)
 	SetCachedMerchant(merchantID string, merchant *models.Merchant, ttl time.Duration) error
 	InvalidateMerchantCache(merchantID string) error
-	
+
 	// Summary caching
 	GetCachedMerchantSummary(key string) (*models.MerchantSummary, error)
 	SetCachedMerchantSummary(key string, summary *models.MerchantSummary, ttl time.Duration) error
-	
+
 	// Generic caching
 	Get(key string, dest interface{}) error
 	Set(key string, value interface{}, ttl time.Duration) error
 	Delete(key string) error
 	DeletePattern(pattern string) error
-	
+
 	// Health check
 	Ping() error
 	Close() error
@@ -54,7 +54,7 @@ func NewCacheService() (CacheService, error) {
 	}
 
 	redisConfig := config.GetRedisConfig()
-	
+
 	// Configure Redis options
 	options := &redis.Options{
 		Addr:         fmt.Sprintf("%s:%s", redisConfig.Host, redisConfig.Port),
@@ -64,16 +64,16 @@ func NewCacheService() (CacheService, error) {
 		ReadTimeout:  redisConfig.Timeout,
 		WriteTimeout: redisConfig.Timeout,
 	}
-	
+
 	// Only set password if it's not empty
 	if redisConfig.Password != "" {
 		options.Password = redisConfig.Password
 	}
-	
+
 	client := redis.NewClient(options)
 
 	ctx := context.Background()
-	
+
 	// Test connection
 	if err := client.Ping(ctx).Err(); err != nil {
 		return nil, fmt.Errorf("failed to connect to Redis: %v", err)
@@ -96,7 +96,7 @@ func (c *cacheService) generateCacheKey(parts ...string) string {
 // GetCachedTransactions retrieves cached transaction results
 func (c *cacheService) GetCachedTransactions(key string) (*repositories.TransactionListResult, error) {
 	cacheKey := c.generateCacheKey("transactions", key)
-	
+
 	data, err := c.client.Get(c.ctx, cacheKey).Bytes()
 	if err != nil {
 		if err == redis.Nil {
@@ -116,7 +116,7 @@ func (c *cacheService) GetCachedTransactions(key string) (*repositories.Transact
 // SetCachedTransactions stores transaction results in cache
 func (c *cacheService) SetCachedTransactions(key string, result *repositories.TransactionListResult, ttl time.Duration) error {
 	cacheKey := c.generateCacheKey("transactions", key)
-	
+
 	data, err := json.Marshal(result)
 	if err != nil {
 		return fmt.Errorf("failed to marshal transactions for cache: %v", err)
@@ -138,7 +138,7 @@ func (c *cacheService) InvalidateTransactionCache(merchantID string) error {
 // GetCachedMerchant retrieves cached merchant data
 func (c *cacheService) GetCachedMerchant(merchantID string) (*models.Merchant, error) {
 	cacheKey := c.generateCacheKey("merchant", merchantID)
-	
+
 	data, err := c.client.Get(c.ctx, cacheKey).Bytes()
 	if err != nil {
 		if err == redis.Nil {
@@ -158,7 +158,7 @@ func (c *cacheService) GetCachedMerchant(merchantID string) (*models.Merchant, e
 // SetCachedMerchant stores merchant data in cache
 func (c *cacheService) SetCachedMerchant(merchantID string, merchant *models.Merchant, ttl time.Duration) error {
 	cacheKey := c.generateCacheKey("merchant", merchantID)
-	
+
 	data, err := json.Marshal(merchant)
 	if err != nil {
 		return fmt.Errorf("failed to marshal merchant for cache: %v", err)
@@ -180,7 +180,7 @@ func (c *cacheService) InvalidateMerchantCache(merchantID string) error {
 // GetCachedMerchantSummary retrieves cached merchant summary
 func (c *cacheService) GetCachedMerchantSummary(key string) (*models.MerchantSummary, error) {
 	cacheKey := c.generateCacheKey("summary", key)
-	
+
 	data, err := c.client.Get(c.ctx, cacheKey).Bytes()
 	if err != nil {
 		if err == redis.Nil {
@@ -200,7 +200,7 @@ func (c *cacheService) GetCachedMerchantSummary(key string) (*models.MerchantSum
 // SetCachedMerchantSummary stores merchant summary in cache
 func (c *cacheService) SetCachedMerchantSummary(key string, summary *models.MerchantSummary, ttl time.Duration) error {
 	cacheKey := c.generateCacheKey("summary", key)
-	
+
 	data, err := json.Marshal(summary)
 	if err != nil {
 		return fmt.Errorf("failed to marshal summary for cache: %v", err)
@@ -265,17 +265,29 @@ func (c *cacheService) Close() error {
 // noOpCacheService provides a no-operation cache service when Redis is disabled
 type noOpCacheService struct{}
 
-func (n *noOpCacheService) GetCachedTransactions(key string) (*repositories.TransactionListResult, error) { return nil, nil }
-func (n *noOpCacheService) SetCachedTransactions(key string, result *repositories.TransactionListResult, ttl time.Duration) error { return nil }
+func (n *noOpCacheService) GetCachedTransactions(key string) (*repositories.TransactionListResult, error) {
+	return nil, nil
+}
+func (n *noOpCacheService) SetCachedTransactions(key string, result *repositories.TransactionListResult, ttl time.Duration) error {
+	return nil
+}
 func (n *noOpCacheService) InvalidateTransactionCache(merchantID string) error { return nil }
-func (n *noOpCacheService) GetCachedMerchant(merchantID string) (*models.Merchant, error) { return nil, nil }
-func (n *noOpCacheService) SetCachedMerchant(merchantID string, merchant *models.Merchant, ttl time.Duration) error { return nil }
+func (n *noOpCacheService) GetCachedMerchant(merchantID string) (*models.Merchant, error) {
+	return nil, nil
+}
+func (n *noOpCacheService) SetCachedMerchant(merchantID string, merchant *models.Merchant, ttl time.Duration) error {
+	return nil
+}
 func (n *noOpCacheService) InvalidateMerchantCache(merchantID string) error { return nil }
-func (n *noOpCacheService) GetCachedMerchantSummary(key string) (*models.MerchantSummary, error) { return nil, nil }
-func (n *noOpCacheService) SetCachedMerchantSummary(key string, summary *models.MerchantSummary, ttl time.Duration) error { return nil }
-func (n *noOpCacheService) Get(key string, dest interface{}) error { return nil }
+func (n *noOpCacheService) GetCachedMerchantSummary(key string) (*models.MerchantSummary, error) {
+	return nil, nil
+}
+func (n *noOpCacheService) SetCachedMerchantSummary(key string, summary *models.MerchantSummary, ttl time.Duration) error {
+	return nil
+}
+func (n *noOpCacheService) Get(key string, dest interface{}) error                     { return nil }
 func (n *noOpCacheService) Set(key string, value interface{}, ttl time.Duration) error { return nil }
-func (n *noOpCacheService) Delete(key string) error { return nil }
-func (n *noOpCacheService) DeletePattern(pattern string) error { return nil }
-func (n *noOpCacheService) Ping() error { return nil }
-func (n *noOpCacheService) Close() error { return nil }
+func (n *noOpCacheService) Delete(key string) error                                    { return nil }
+func (n *noOpCacheService) DeletePattern(pattern string) error                         { return nil }
+func (n *noOpCacheService) Ping() error                                                { return nil }
+func (n *noOpCacheService) Close() error                                               { return nil }

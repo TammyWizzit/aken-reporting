@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"aken_reporting_service/internal/config"
+	"aken_reporting_service/internal/middleware"
 	"aken_reporting_service/internal/models"
 	"aken_reporting_service/internal/services"
 	"aken_reporting_service/internal/utils"
@@ -30,7 +31,7 @@ func (h *TransactionHandler) GetTransactions(c *gin.Context) {
 	merchantID := getMerchantID(c)
 	if merchantID == "" {
 		utils.LogWarn("Unauthorized transaction request - missing merchant ID", map[string]interface{}{
-			"path": c.Request.URL.Path,
+			"path":        c.Request.URL.Path,
 			"remote_addr": c.ClientIP(),
 		})
 		h.sendErrorResponse(c, http.StatusUnauthorized, config.ErrorCodeAuthFailed, "Invalid or missing authentication credentials", nil)
@@ -38,8 +39,8 @@ func (h *TransactionHandler) GetTransactions(c *gin.Context) {
 	}
 
 	utils.LogTrace("Transactions request received", map[string]interface{}{
-		"merchant_id": merchantID,
-		"path": c.Request.URL.Path,
+		"merchant_id":  merchantID,
+		"path":         c.Request.URL.Path,
 		"query_params": c.Request.URL.RawQuery,
 	})
 
@@ -101,14 +102,14 @@ func (h *TransactionHandler) GetTransactions(c *gin.Context) {
 	if err != nil {
 		utils.LogError("Database error in GetTransactions", err, map[string]interface{}{
 			"merchant_id": merchantID,
-			"page": page,
-			"limit": limit,
-			"filter": filterParam,
+			"page":        page,
+			"limit":       limit,
+			"filter":      filterParam,
 		})
-		
+
 		// Check if this is an internal error that should be sanitized
 		if config.IsInternalError(err) {
-			h.sendErrorResponse(c, http.StatusServiceUnavailable, config.ErrorCodeServiceUnavailable, "", 
+			h.sendErrorResponse(c, http.StatusServiceUnavailable, config.ErrorCodeServiceUnavailable, "",
 				gin.H{"retry_after": 30})
 		} else {
 			h.sendErrorResponse(c, http.StatusInternalServerError, config.ErrorCodeDatabaseError, "", nil)
@@ -118,14 +119,14 @@ func (h *TransactionHandler) GetTransactions(c *gin.Context) {
 
 	utils.LogTrace("Transactions request returning result", map[string]interface{}{
 		"merchant_id": merchantID,
-		"row_count": len(result.Transactions),
+		"row_count":   len(result.Transactions),
 		"total_count": result.TotalCount,
-		"page": result.Page,
+		"page":        result.Page,
 	})
 
 	// Build response with proper field handling
 	var responseData interface{}
-	
+
 	if len(fields) > 0 {
 		// Specific fields requested - apply field filtering
 		var filteredData []map[string]interface{}
@@ -144,18 +145,18 @@ func (h *TransactionHandler) GetTransactions(c *gin.Context) {
 		"data": responseData,
 		"meta": gin.H{
 			"pagination": gin.H{
-				"page":              result.Page,
-				"limit":             result.Limit,
-				"total":             result.TotalCount,
-				"total_pages":       result.TotalPages,
+				"page":               result.Page,
+				"limit":              result.Limit,
+				"total":              result.TotalCount,
+				"total_pages":        result.TotalPages,
 				"current_page_count": result.CurrentPageCount,
-				"has_next":          result.HasNext,
-				"has_prev":          result.HasPrev,
+				"has_next":           result.HasNext,
+				"has_prev":           result.HasPrev,
 			},
-			"timestamp":        time.Now().UTC().Format(time.RFC3339),
-			"version":          config.APIVersion,
+			"timestamp":         time.Now().UTC().Format(time.RFC3339),
+			"version":           config.APIVersion,
 			"execution_time_ms": 150, // In real implementation, measure actual time
-			"cached":           false,
+			"cached":            false,
 		},
 		"links": h.buildPaginationLinks(c, result.Page, result.TotalPages, result.Limit),
 	}
@@ -242,7 +243,7 @@ func (h *TransactionHandler) AdvancedTransactionSearch(c *gin.Context) {
 			}
 			aggregationResults["total_amount"] = map[string]interface{}{"value": total}
 		}
-		
+
 		if _, exists := searchReq.Aggregations["avg_amount"]; exists {
 			if len(result.Transactions) > 0 {
 				total := int64(0)
@@ -259,13 +260,13 @@ func (h *TransactionHandler) AdvancedTransactionSearch(c *gin.Context) {
 
 	// Build response with field filtering
 	var responseData interface{}
-	
-	// Determine which fields to use for filtering  
+
+	// Determine which fields to use for filtering
 	fieldsToUse := result.RequestedFields
 	if len(fieldsToUse) == 0 && len(searchReq.Fields) > 0 {
 		fieldsToUse = searchReq.Fields
 	}
-	
+
 	if len(fieldsToUse) > 0 {
 		// Apply field filtering
 		var filteredData []map[string]interface{}
@@ -329,7 +330,7 @@ func (h *TransactionHandler) GetMerchantSummary(c *gin.Context) {
 	if err != nil {
 		// Log the actual error for debugging
 		fmt.Printf("Database error in GetMerchantSummary: %v\n", err)
-		
+
 		// Check if this is an internal error that should be sanitized
 		if config.IsInternalError(err) {
 			h.sendErrorResponse(c, http.StatusServiceUnavailable, config.ErrorCodeServiceUnavailable, "", nil)
@@ -368,7 +369,7 @@ func (h *TransactionHandler) GetMerchantSummary(c *gin.Context) {
 // GetMerchantTransactions handles GET /api/v2/merchants/:merchant_id/transactions
 func (h *TransactionHandler) GetMerchantTransactions(c *gin.Context) {
 	requestedMerchantID := c.Param("merchant_id")
-	
+
 	// Add merchant filter to query parameters
 	existingFilter := c.Query("filter")
 	if existingFilter == "" {
@@ -376,7 +377,7 @@ func (h *TransactionHandler) GetMerchantTransactions(c *gin.Context) {
 	} else {
 		c.Request.URL.RawQuery += fmt.Sprintf("&filter=%s AND merchant_id:eq:%s", existingFilter, requestedMerchantID)
 	}
-	
+
 	// Delegate to main GetTransactions handler
 	h.GetTransactions(c)
 }
@@ -385,61 +386,61 @@ func (h *TransactionHandler) GetMerchantTransactions(c *gin.Context) {
 
 func (h *TransactionHandler) sendErrorResponse(c *gin.Context, statusCode int, errorCode, message string, details interface{}) {
 	merchantID := getMerchantID(c)
-	
+
 	utils.LogWarn("Sending error response", map[string]interface{}{
 		"merchant_id": merchantID,
 		"status_code": statusCode,
-		"error_code": errorCode,
-		"path": c.Request.URL.Path,
+		"error_code":  errorCode,
+		"path":        c.Request.URL.Path,
 		"remote_addr": c.ClientIP(),
 	})
-	
+
 	// Use user-friendly message if available
 	userMessage := config.GetUserFriendlyMessage(errorCode)
 	if message != "" {
 		userMessage = message
 	}
-	
+
 	response := gin.H{
 		"code":       errorCode,
 		"message":    userMessage,
 		"timestamp":  time.Now().UTC().Format(time.RFC3339),
 		"request_id": getRequestID(c),
 	}
-	
+
 	if details != nil {
 		response["details"] = details
 	}
-	
+
 	c.JSON(statusCode, response)
 }
 
 func (h *TransactionHandler) buildPaginationLinks(c *gin.Context, currentPage, totalPages, limit int) gin.H {
 	baseURL := fmt.Sprintf("%s://%s%s", getScheme(c), c.Request.Host, c.Request.URL.Path)
 	query := c.Request.URL.Query()
-	
+
 	// Remove page parameter for link building
 	delete(query, "page")
 	baseQuery := query.Encode()
-	
+
 	links := gin.H{
 		"self":  buildURL(baseURL, baseQuery, currentPage),
 		"first": buildURL(baseURL, baseQuery, 1),
 		"last":  buildURL(baseURL, baseQuery, totalPages),
 	}
-	
+
 	if currentPage > 1 {
 		links["prev"] = buildURL(baseURL, baseQuery, currentPage-1)
 	} else {
 		links["prev"] = nil
 	}
-	
+
 	if currentPage < totalPages {
 		links["next"] = buildURL(baseURL, baseQuery, currentPage+1)
 	} else {
 		links["next"] = nil
 	}
-	
+
 	return links
 }
 
@@ -530,13 +531,13 @@ func (h *TransactionHandler) GetTransactionTotals(c *gin.Context) {
 	}
 
 	utils.LogTrace("Transaction totals request received", map[string]interface{}{
-		"merchant_id":       merchantID,
-		"date":              request.Date,
-		"device_id":         request.DeviceID,
-		"terminal_id":       request.TerminalID,
-		"bank_terminal_id":  request.BankTerminalID,
-		"path":              c.Request.URL.Path,
-		"query_params":      c.Request.URL.RawQuery,
+		"merchant_id":      merchantID,
+		"date":             request.Date,
+		"device_id":        request.DeviceID,
+		"terminal_id":      request.TerminalID,
+		"bank_terminal_id": request.BankTerminalID,
+		"path":             c.Request.URL.Path,
+		"query_params":     c.Request.URL.RawQuery,
 	})
 
 	// Get transaction totals
@@ -562,6 +563,112 @@ func (h *TransactionHandler) GetTransactionTotals(c *gin.Context) {
 		"merchant_id":  merchantID,
 		"date":         result.Date,
 		"totals_count": len(result.Totals),
+	})
+
+	c.JSON(http.StatusOK, result)
+}
+
+// GetTransactionLookup handles POST /api/v1/efinance/transactions/totals
+func (h *TransactionHandler) GetTransactionLookup(c *gin.Context) {
+	var request models.TransactionLookupRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		utils.LogWarn("Invalid transaction lookup request body", map[string]interface{}{
+			"error": err.Error(),
+			"path":  c.Request.URL.Path,
+		})
+		h.sendErrorResponse(c, http.StatusBadRequest, config.ErrorCodeBadRequest, fmt.Sprintf("Invalid request body: %v", err), nil)
+		return
+	}
+
+	utils.LogTrace("Transaction lookup request received", map[string]interface{}{
+		"date":      request.Date,
+		"device_id": request.DeviceID,
+		"path":      c.Request.URL.Path,
+	})
+
+	// Set MySQL flag for efinance APIs
+	h.transactionService.SetUseMysql(middleware.GetUseMysqlFlag(c))
+	
+	// Get transaction lookup data
+	result, err := h.transactionService.GetTransactionLookup(request)
+	if err != nil {
+		utils.LogError("Error getting transaction lookup", err, map[string]interface{}{
+			"date":      request.Date,
+			"device_id": request.DeviceID,
+		})
+
+		// Check if this is an internal error that should be sanitized
+		if config.IsInternalError(err) {
+			h.sendErrorResponse(c, http.StatusServiceUnavailable, config.ErrorCodeServiceUnavailable, "",
+				gin.H{"retry_after": 30})
+		} else {
+			h.sendErrorResponse(c, http.StatusInternalServerError, config.ErrorCodeDatabaseError, "", nil)
+		}
+		return
+	}
+
+	utils.LogTrace("Transaction lookup request returning result", map[string]interface{}{
+		"date":         result.Date,
+		"device_id":    result.DeviceID,
+		"totals_count": len(result.Totals),
+	})
+
+	c.JSON(http.StatusOK, result)
+}
+
+// SearchTransactionDetails handles POST /api/v1/efinance/transactions/lookup
+func (h *TransactionHandler) SearchTransactionDetails(c *gin.Context) {
+	var request models.IsoTransactionSearchRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		utils.LogWarn("Invalid transaction search request body", map[string]interface{}{
+			"error": err.Error(),
+			"path":  c.Request.URL.Path,
+		})
+		h.sendErrorResponse(c, http.StatusBadRequest, config.ErrorCodeBadRequest, fmt.Sprintf("Invalid request body: %v", err), nil)
+		return
+	}
+
+	utils.LogTrace("Transaction search request received", map[string]interface{}{
+		"date":          request.Date,
+		"device_id":     request.DeviceID,
+		"trx_rrn":       request.TrxRRN,
+		"panid":         request.PanID,
+		"bank_group_id": request.BankGroupID,
+		"amount":        request.Amount,
+		"trx_descr":     request.TrxDescr,
+		"path":          c.Request.URL.Path,
+	})
+
+	// Set MySQL flag for efinance APIs
+	h.transactionService.SetUseMysql(middleware.GetUseMysqlFlag(c))
+	
+	// Get transaction search results
+	result, err := h.transactionService.SearchTransactionDetails(request)
+	if err != nil {
+		utils.LogError("Error searching transaction details", err, map[string]interface{}{
+			"date":          request.Date,
+			"device_id":     request.DeviceID,
+			"trx_rrn":       request.TrxRRN,
+			"panid":         request.PanID,
+			"bank_group_id": request.BankGroupID,
+			"amount":        request.Amount,
+			"trx_descr":     request.TrxDescr,
+		})
+
+		// Check if this is an internal error that should be sanitized
+		if config.IsInternalError(err) {
+			h.sendErrorResponse(c, http.StatusServiceUnavailable, config.ErrorCodeServiceUnavailable, "",
+				gin.H{"retry_after": 30})
+		} else {
+			h.sendErrorResponse(c, http.StatusInternalServerError, config.ErrorCodeDatabaseError, "", nil)
+		}
+		return
+	}
+
+	utils.LogTrace("Transaction search request returning result", map[string]interface{}{
+		"date":              request.Date,
+		"device_id":         request.DeviceID,
+		"transactions_count": len(result.Transactions),
 	})
 
 	c.JSON(http.StatusOK, result)

@@ -3,64 +3,69 @@ package database
 import (
 	"context"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 // HealthStatus represents the health status of the database
 type HealthStatus struct {
-	Status    string `json:"status"`
-	Message   string `json:"message"`
+	Status    string    `json:"status"`
+	Message   string    `json:"message"`
 	Timestamp time.Time `json:"timestamp"`
-	Latency   int64  `json:"latency_ms"`
+	Latency   int64     `json:"latency_ms"`
 }
 
-// CheckDatabaseHealth checks if the database is healthy
+// CheckDatabaseHealth checks if both databases are healthy
 func CheckDatabaseHealth() HealthStatus {
 	start := time.Now()
-	
+
 	// Create a context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
-	// Test database connection
-	sqlDB, err := DB.DB()
-	if err != nil {
+
+	postgresHealthy := checkSingleDatabase(DB, "PostgreSQL", ctx)
+	mysqlHealthy := checkSingleDatabase(MySQLDB, "MySQL", ctx)
+
+	// Determine overall health status
+	if postgresHealthy && mysqlHealthy {
+		return HealthStatus{
+			Status:    "healthy",
+			Message:   "Both databases are responding normally",
+			Timestamp: time.Now(),
+			Latency:   time.Since(start).Milliseconds(),
+		}
+	} else if postgresHealthy || mysqlHealthy {
+		return HealthStatus{
+			Status:    "degraded",
+			Message:   "One database is unavailable but service can continue",
+			Timestamp: time.Now(),
+			Latency:   time.Since(start).Milliseconds(),
+		}
+	} else {
 		return HealthStatus{
 			Status:    "unhealthy",
-			Message:   "Database connection failed",
+			Message:   "Both databases are unavailable",
 			Timestamp: time.Now(),
 			Latency:   time.Since(start).Milliseconds(),
 		}
 	}
-	
+}
+
+// checkSingleDatabase checks the health of a single database
+func checkSingleDatabase(db *gorm.DB, dbType string, ctx context.Context) bool {
+	if db == nil {
+		return false
+	}
+
+	// Test database connection
+	sqlDB, err := db.DB()
+	if err != nil {
+		return false
+	}
+
 	// Ping the database
 	err = sqlDB.PingContext(ctx)
-	if err != nil {
-		return HealthStatus{
-			Status:    "unhealthy",
-			Message:   "Database ping failed",
-			Timestamp: time.Now(),
-			Latency:   time.Since(start).Milliseconds(),
-		}
-	}
-	
-	// Test a simple query
-	var result int
-	err = DB.Raw("SELECT 1").Scan(&result).Error
-	if err != nil {
-		return HealthStatus{
-			Status:    "unhealthy",
-			Message:   "Database query test failed",
-			Timestamp: time.Now(),
-			Latency:   time.Since(start).Milliseconds(),
-		}
-	}
-	
-	return HealthStatus{
-		Status:    "healthy",
-		Message:   "Database is responding normally",
-		Timestamp: time.Now(),
-		Latency:   time.Since(start).Milliseconds(),
-	}
+	return err == nil
 }
 
 // IsDatabaseHealthy returns true if database is healthy

@@ -22,21 +22,21 @@ func TestAuthMiddleware_ValidBasicAuth(t *testing.T) {
 		merchantID, exists := c.Get("merchantID")
 		assert.True(t, exists)
 		assert.Equal(t, "d1a3fefe-101d-11ea-8d71-362b9e155667", merchantID)
-		
+
 		authenticated, exists := c.Get("authenticated")
 		assert.True(t, exists)
 		assert.True(t, authenticated.(bool))
-		
+
 		c.JSON(200, gin.H{"status": "success"})
 	})
 
 	// Create request with valid Basic Auth (using known valid merchant ID)
 	credentials := "d1a3fefe-101d-11ea-8d71-362b9e155667:test-password"
 	encodedCredentials := base64.StdEncoding.EncodeToString([]byte(credentials))
-	
+
 	req, _ := http.NewRequest("GET", "/test", nil)
 	req.Header.Set("Authorization", "Basic "+encodedCredentials)
-	
+
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -116,7 +116,7 @@ func TestAuthMiddleware_InvalidCredentialsFormat(t *testing.T) {
 	// Create request with invalid credentials format
 	credentials := "invalid-format-without-colon"
 	encodedCredentials := base64.StdEncoding.EncodeToString([]byte(credentials))
-	
+
 	req, _ := http.NewRequest("GET", "/test", nil)
 	req.Header.Set("Authorization", "Basic "+encodedCredentials)
 	w := httptest.NewRecorder()
@@ -139,7 +139,7 @@ func TestAuthMiddleware_InvalidCredentials(t *testing.T) {
 	// Create request with invalid credentials
 	credentials := "invalid-merchant:wrong-password"
 	encodedCredentials := base64.StdEncoding.EncodeToString([]byte(credentials))
-	
+
 	req, _ := http.NewRequest("GET", "/test", nil)
 	req.Header.Set("Authorization", "Basic "+encodedCredentials)
 	w := httptest.NewRecorder()

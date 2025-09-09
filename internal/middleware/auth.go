@@ -93,7 +93,7 @@ func ResponseHeadersMiddleware() gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
 		c.Header("X-API-Version", config.APIVersion)
 		c.Header("X-Service-Name", config.ServiceName)
-		
+
 		if requestID, exists := c.Get("requestID"); exists {
 			if id, ok := requestID.(string); ok {
 				c.Header("X-Request-ID", id)
@@ -114,11 +114,11 @@ func ResponseHeadersMiddleware() gin.HandlerFunc {
 func CORSMiddleware() gin.HandlerFunc {
 	return gin.HandlerFunc(func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
-		
+
 		// Allow specific origins or all origins in development
 		allowedOrigins := []string{
 			"http://localhost:3000",
-			"http://localhost:8080", 
+			"http://localhost:8080",
 			"http://localhost:5173",
 			"https://aken-eu.staging.wizzitdigital.com",
 		}

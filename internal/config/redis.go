@@ -21,17 +21,17 @@ func GetRedisConfig() *RedisConfig {
 	host := getEnvOrDefault("REDIS_HOST", "localhost")
 	port := getEnvOrDefault("REDIS_PORT", "6379")
 	password := getEnvOrDefault("REDIS_PASSWORD", "")
-	
+
 	// If password is empty string, set it to empty string (no authentication)
 	if password == "" {
 		password = ""
 	}
-	
+
 	db, _ := strconv.Atoi(getEnvOrDefault("REDIS_DB", "0"))
 	poolSize, _ := strconv.Atoi(getEnvOrDefault("REDIS_POOL_SIZE", "10"))
-	
+
 	timeout, _ := strconv.Atoi(getEnvOrDefault("REDIS_TIMEOUT", "5"))
-	
+
 	return &RedisConfig{
 		Host:     host,
 		Port:     port,

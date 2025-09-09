@@ -39,9 +39,9 @@ func TestTransaction_GetTypeString(t *testing.T) {
 
 func TestTransaction_IsReversed(t *testing.T) {
 	tests := []struct {
-		name           string
+		name            string
 		reversedTxLogID *string
-		expected       bool
+		expected        bool
 	}{
 		{"not_reversed", nil, false},
 		{"reversed", stringPtr("some-id"), true},
@@ -149,9 +149,9 @@ func TestTransactionFilter_Validation(t *testing.T) {
 
 func TestPaginationParams_Validation(t *testing.T) {
 	tests := []struct {
-		name     string
-		params   PaginationParams
-		isValid  bool
+		name    string
+		params  PaginationParams
+		isValid bool
 	}{
 		{"valid_pagination", PaginationParams{Page: 1, Limit: 10}, true},
 		{"invalid_page", PaginationParams{Page: 0, Limit: 10}, false},
@@ -168,9 +168,9 @@ func TestPaginationParams_Validation(t *testing.T) {
 
 func TestSortParams_Validation(t *testing.T) {
 	tests := []struct {
-		name     string
-		params   SortParams
-		isValid  bool
+		name    string
+		params  SortParams
+		isValid bool
 	}{
 		{"valid_asc_sort", SortParams{Field: "amount", Direction: "asc"}, true},
 		{"valid_desc_sort", SortParams{Field: "amount", Direction: "desc"}, true},
@@ -248,8 +248,8 @@ func TestTransactionSearchRequest_Validation(t *testing.T) {
 		{
 			name: "valid_request_with_query",
 			request: TransactionSearchRequest{
-				Query: map[string]interface{}{"amount": 1000},
-				Fields: []string{"tx_log_id", "amount"},
+				Query:      map[string]interface{}{"amount": 1000},
+				Fields:     []string{"tx_log_id", "amount"},
 				Pagination: PaginationParams{Page: 1, Limit: 10},
 			},
 			isValid: true,
@@ -257,7 +257,7 @@ func TestTransactionSearchRequest_Validation(t *testing.T) {
 		{
 			name: "valid_request_without_query",
 			request: TransactionSearchRequest{
-				Fields: []string{"tx_log_id"},
+				Fields:     []string{"tx_log_id"},
 				Pagination: PaginationParams{Page: 1, Limit: 10},
 			},
 			isValid: true,
