@@ -15,6 +15,7 @@ require (
 	gorm.io/driver/mysql v1.5.0
 	gorm.io/driver/postgres v1.5.0
 	gorm.io/gorm v1.25.0
+// github.com/wizzitdigital/wizzit-logger v0.0.0-20240101000000-abcdef123456 // Add this line after setting up SSH
 )
 
 require (

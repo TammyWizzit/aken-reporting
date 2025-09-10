@@ -403,28 +403,31 @@ type TransactionLookupResponse struct {
 
 // IsoTransactionSearchRequest represents the request for individual ISO transaction search
 type IsoTransactionSearchRequest struct {
-	PanID       string `json:"panid" binding:"required"`
-	TrxRRN      string `json:"trx_rrn" binding:"required"`
-	DeviceID    string `json:"device_id" binding:"required"`
-	BankGroupID string `json:"bank_group_id" binding:"required"`
-	Amount      int    `json:"amount" binding:"required"`
-	TrxDescr    string `json:"trx_descr" binding:"required"`
-	Date        string `json:"date" binding:"required"`
+	PanID       string `json:"panid,omitempty"`        // Optional filter
+	TrxRRN      string `json:"trx_rrn,omitempty"`      // Optional filter
+	DeviceID    string `json:"device_id,omitempty"`    // Optional filter
+	GroupID     string `json:"group_id,omitempty"`     // Optional filter (from element 41)
+	BankGroupID string `json:"bank_group_id,omitempty"` // Optional filter (from request_meta)
+	Amount      int    `json:"amount,omitempty"`       // Optional filter (0 means not specified)
+	TrxDescr    string `json:"trx_descr,omitempty"`    // Optional filter
+	Date        string `json:"date,omitempty"`         // Optional filter
+	TxID        string `json:"tx_id,omitempty"`        // Optional filter (from request_meta.trx_id)
 }
 
 // TransactionSearchItem represents a single transaction in the search response
 type TransactionSearchItem struct {
 	Datetime        string  `json:"datetime"`
 	STAN            int     `json:"STAN"`
-	RRN             string  `json:"RRN"`
+	RRN             string  `json:"RRN"`              // Transaction Reference Number
 	BIN             string  `json:"BIN"`
 	PANID           string  `json:"PANID"`
 	DeviceID        string  `json:"device_id"`
-	GroupID         string  `json:"group_id"`
+	GroupID         string  `json:"group_id"`         // From element 41
 	TrxDescr        string  `json:"trx_descr"`
 	TrxType         string  `json:"trx_type"`
-	BankGroupID     *string `json:"bank_group_id"`
+	BankGroupID     *string `json:"bank_group_id"`    // From request_meta.bank_group_id
 	TransactionCode *string `json:"transaction_code"`
+	TxID            *string `json:"tx_id"`            // From request_meta.trx_id
 	Amount          int     `json:"amount"`
 	RC              string  `json:"RC"`
 	TrxAuthCode     *string `json:"trx_auth_code"`

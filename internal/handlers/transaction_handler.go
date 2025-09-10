@@ -636,6 +636,7 @@ func (h *TransactionHandler) SearchTransactionDetails(c *gin.Context) {
 		"bank_group_id": request.BankGroupID,
 		"amount":        request.Amount,
 		"trx_descr":     request.TrxDescr,
+		"tx_id":         request.TxID,
 		"path":          c.Request.URL.Path,
 	})
 
@@ -653,6 +654,7 @@ func (h *TransactionHandler) SearchTransactionDetails(c *gin.Context) {
 			"bank_group_id": request.BankGroupID,
 			"amount":        request.Amount,
 			"trx_descr":     request.TrxDescr,
+			"tx_id":         request.TxID,
 		})
 
 		// Check if this is an internal error that should be sanitized

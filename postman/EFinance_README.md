@@ -102,7 +102,8 @@ Authorization: Bearer <jwt_token>
     "bank_group_id": "BANK001",
     "amount": 10000,
     "trx_descr": "Purchase",
-    "date": "2024-01-15"
+    "date": "2024-01-15",
+    "tx_id": "TXN-2024-001-123456"
 }
 ```
 
@@ -142,6 +143,7 @@ Authorization: Bearer <jwt_token>
             "trx_type": "00",
             "bank_group_id": "BANK001",
             "transaction_code": "TXN001",
+            "tx_id": "TXN-2024-001-123456",
             "amount": 10000,
             "RC": "00",
             "trx_auth_code": "123456"

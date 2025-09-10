@@ -706,6 +706,7 @@ func (r *transactionRepository) SearchTransactionDetails(request models.IsoTrans
 		TrxType         string  `gorm:"column:trx_type"`
 		BankGroupID     *string `gorm:"column:bank_group_id"`
 		TransactionCode *string `gorm:"column:transaction_code"`
+		TxID            *string `gorm:"column:tx_id"`
 		Amount          int     `gorm:"column:amount"`
 		RC              string  `gorm:"column:RC"`
 		TrxAuthCode     *string `gorm:"column:trx_auth_code"`
@@ -713,31 +714,95 @@ func (r *transactionRepository) SearchTransactionDetails(request models.IsoTrans
 	
 	var results []SearchResult
 	
-	// Execute the exact SQL query provided by the user
-	query := r.getDB().Raw(`
+	// Build dynamic query based on provided filters
+	baseQuery := `
 		SELECT
 			trx_datetime AS datetime,
 			trx_stan AS STAN,
 			trx_rrn AS RRN,
 			LEFT(TRIM(BOTH '"' FROM JSON_EXTRACT(trx_snd, '$."35"')), 6) AS BIN,
 			RIGHT(SUBSTRING_INDEX(SUBSTRING_INDEX(TRIM(BOTH '"' FROM JSON_EXTRACT(trx_snd, '$."35"')),'=',1),'D',1), 4) AS PANID,
-			TRIM(BOTH '"' FROM JSON_EXTRACT(trx_snd, '$."42"')) AS device_id,
-			TRIM(BOTH '"' FROM JSON_EXTRACT(trx_snd, '$."41"')) AS group_id,
-			TRIM(BOTH '"' FROM JSON_EXTRACT(trx_snd, '$."43"')) AS trx_descr,
-			TRIM(BOTH '"' FROM JSON_EXTRACT(trx_snd, '$."3"')) AS trx_type,
-			TRIM(BOTH '"' FROM JSON_EXTRACT(JSON_EXTRACT(trx_snd, '$."request_meta"'), '$."bank_group_id"')) AS bank_group_id,
-			TRIM(BOTH '"' FROM JSON_EXTRACT(JSON_EXTRACT(trx_snd, '$."request_meta"'), '$."transaction_code"')) AS transaction_code,
+			TRIM(TRIM(BOTH '"' FROM JSON_EXTRACT(trx_snd, '$."42"'))) AS device_id,
+			TRIM(TRIM(BOTH '"' FROM JSON_EXTRACT(trx_snd, '$."41"'))) AS group_id,
+			TRIM(TRIM(BOTH '"' FROM JSON_EXTRACT(trx_snd, '$."43"'))) AS trx_descr,
+			TRIM(TRIM(BOTH '"' FROM JSON_EXTRACT(trx_snd, '$."3"'))) AS trx_type,
+			TRIM(TRIM(BOTH '"' FROM JSON_EXTRACT(JSON_EXTRACT(trx_snd, '$."request_meta"'), '$."bank_group_id"'))) AS bank_group_id,
+			TRIM(TRIM(BOTH '"' FROM JSON_EXTRACT(JSON_EXTRACT(trx_snd, '$."request_meta"'), '$."transaction_code"'))) AS transaction_code,
+			TRIM(TRIM(BOTH '"' FROM JSON_EXTRACT(JSON_EXTRACT(trx_snd, '$."request_meta"'), '$."trx_id"'))) AS tx_id,
 			trx_amt AS amount,
 			trx_rsp_code AS RC,
 			trx_auth_code
 		FROM iso_trx
-		WHERE DATE(trx_datetime) = ?
-		AND TRIM(BOTH '"' FROM JSON_EXTRACT(trx_snd, '$."42"')) = ?
-		AND trx_rrn = ?
-		AND trx_amt = ?
-		AND trx_rsp_code = '00'
-		ORDER BY trx_datetime
-	`, request.Date, request.DeviceID, request.TrxRRN, request.Amount)
+		WHERE trx_rsp_code = '00'
+	`
+	
+	// Build WHERE conditions dynamically
+	var conditions []string
+	var args []interface{}
+	
+	// Add date filter if provided
+	if request.Date != "" {
+		conditions = append(conditions, "DATE(trx_datetime) = ?")
+		args = append(args, request.Date)
+	}
+	
+	// Add device_id filter if provided
+	if request.DeviceID != "" {
+		conditions = append(conditions, "TRIM(TRIM(BOTH '\"' FROM JSON_EXTRACT(trx_snd, '$.\"42\"'))) = ?")
+		args = append(args, request.DeviceID)
+	}
+	
+	// Add trx_rrn filter if provided
+	if request.TrxRRN != "" {
+		conditions = append(conditions, "trx_rrn = ?")
+		args = append(args, request.TrxRRN)
+	}
+	
+	// Add amount filter if provided (non-zero)
+	if request.Amount != 0 {
+		conditions = append(conditions, "trx_amt = ?")
+		args = append(args, request.Amount)
+	}
+	
+	// Add panid filter if provided
+	if request.PanID != "" {
+		conditions = append(conditions, "RIGHT(SUBSTRING_INDEX(SUBSTRING_INDEX(TRIM(BOTH '\"' FROM JSON_EXTRACT(trx_snd, '$.\"35\"')),'=',1),'D',1), 4) = ?")
+		args = append(args, request.PanID)
+	}
+	
+	// Add group_id filter if provided
+	if request.GroupID != "" {
+		conditions = append(conditions, "TRIM(TRIM(BOTH '\"' FROM JSON_EXTRACT(trx_snd, '$.\"41\"'))) = ?")
+		args = append(args, request.GroupID)
+	}
+	
+	// Add bank_group_id filter if provided
+	if request.BankGroupID != "" {
+		conditions = append(conditions, "TRIM(TRIM(BOTH '\"' FROM JSON_EXTRACT(JSON_EXTRACT(trx_snd, '$.\"request_meta\"'), '$.\"bank_group_id\"'))) = ?")
+		args = append(args, request.BankGroupID)
+	}
+	
+	// Add trx_descr filter if provided
+	if request.TrxDescr != "" {
+		conditions = append(conditions, "TRIM(TRIM(BOTH '\"' FROM JSON_EXTRACT(trx_snd, '$.\"43\"'))) = ?")
+		args = append(args, request.TrxDescr)
+	}
+	
+	// Add tx_id filter if provided
+	if request.TxID != "" {
+		conditions = append(conditions, "TRIM(TRIM(BOTH '\"' FROM JSON_EXTRACT(JSON_EXTRACT(trx_snd, '$.\"request_meta\"'), '$.\"trx_id\"'))) = ?")
+		args = append(args, request.TxID)
+	}
+	
+	// Combine all conditions
+	if len(conditions) > 0 {
+		baseQuery += " AND " + strings.Join(conditions, " AND ")
+	}
+	
+	baseQuery += " ORDER BY trx_datetime"
+	
+	// Execute the dynamic query
+	query := r.getDB().Raw(baseQuery, args...)
 	
 	if err := query.Scan(&results).Error; err != nil {
 		return nil, fmt.Errorf("failed to search transaction details: %w", err)
@@ -758,6 +823,7 @@ func (r *transactionRepository) SearchTransactionDetails(request models.IsoTrans
 			TrxType:         result.TrxType,
 			BankGroupID:     result.BankGroupID,
 			TransactionCode: result.TransactionCode,
+			TxID:            result.TxID,
 			Amount:          result.Amount,
 			RC:              result.RC,
 			TrxAuthCode:     result.TrxAuthCode,

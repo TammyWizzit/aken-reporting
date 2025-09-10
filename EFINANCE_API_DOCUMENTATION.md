@@ -145,13 +145,15 @@ Searches for specific transaction details based on various criteria including PA
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `panid` | string | Yes | Masked PAN identifier |
-| `trx_rrn` | string | Yes | Transaction Reference Number |
-| `device_id` | string | Yes | Device/terminal identifier |
-| `bank_group_id` | string | Yes | Bank group identifier |
-| `amount` | integer | Yes | Transaction amount in minor units (piasters) |
-| `trx_descr` | string | Yes | Transaction description/type |
-| `date` | string | Yes | Transaction date in YYYY-MM-DD format |
+| `panid` | string | No | Masked PAN identifier (optional filter) |
+| `trx_rrn` | string | No | Transaction Reference Number (optional filter) |
+| `device_id` | string | No | Device/terminal identifier (optional filter) |
+| `group_id` | string | No | Transaction group identifier from element 41 (optional filter) |
+| `bank_group_id` | string | No | Bank group identifier from request_meta (optional filter) |
+| `amount` | integer | No | Transaction amount in minor units (piasters) (optional filter) |
+| `trx_descr` | string | No | Transaction description/type (optional filter) |
+| `date` | string | No | Transaction date in YYYY-MM-DD format (optional filter) |
+| `tx_id` | string | No | Transaction ID from request_meta (optional filter) |
 
 #### Response
 
@@ -172,6 +174,7 @@ Searches for specific transaction details based on various criteria including PA
       "trx_type": "WITHDRAWAL",
       "bank_group_id": "BANK001",
       "transaction_code": "01",
+      "tx_id": "TXN-2024-001-123456",
       "amount": 500000,
       "RC": "00",
       "trx_auth_code": "123456"
@@ -191,17 +194,19 @@ Searches for specific transaction details based on various criteria including PA
 | `transactions[].BIN` | string | Bank Identification Number |
 | `transactions[].PANID` | string | Masked PAN identifier |
 | `transactions[].device_id` | string | Device/terminal identifier |
-| `transactions[].group_id` | string | Transaction group identifier |
+| `transactions[].group_id` | string | Transaction group identifier (from element 41) |
 | `transactions[].trx_descr` | string | Transaction description |
 | `transactions[].trx_type` | string | Transaction type code |
-| `transactions[].bank_group_id` | string | Bank group identifier (nullable) |
+| `transactions[].bank_group_id` | string | Bank group identifier from request_meta (nullable) |
 | `transactions[].transaction_code` | string | ISO transaction code (nullable) |
+| `transactions[].tx_id` | string | Transaction ID from request_meta (nullable) |
 | `transactions[].amount` | integer | Amount in minor units (piasters) |
 | `transactions[].RC` | string | Response code |
 | `transactions[].trx_auth_code` | string | Transaction authorization code (nullable) |
 
-#### Example Request
+#### Example Requests
 
+**All filters (most specific search):**
 ```bash
 curl -X POST "https://api.example.com/api/v1/efinance/transactions/lookup" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..." \
@@ -214,6 +219,68 @@ curl -X POST "https://api.example.com/api/v1/efinance/transactions/lookup" \
     "amount": 500000,
     "trx_descr": "Cash Withdrawal",
     "date": "2024-01-15"
+  }'
+```
+
+**Date only (all transactions for a date):**
+```bash
+curl -X POST "https://api.example.com/api/v1/efinance/transactions/lookup" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "date": "2024-01-15"
+  }'
+```
+
+**Date + device_id (all transactions for a specific device):**
+```bash
+curl -X POST "https://api.example.com/api/v1/efinance/transactions/lookup" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "date": "2024-01-15",
+    "device_id": "DEVICE001"
+  }'
+```
+
+**Date + amount + trx_descr (transactions by amount and type):**
+```bash
+curl -X POST "https://api.example.com/api/v1/efinance/transactions/lookup" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "date": "2024-01-15",
+    "amount": 500000,
+    "trx_descr": "Cash Withdrawal"
+  }'
+```
+
+**No filters (all successful transactions):**
+```bash
+curl -X POST "https://api.example.com/api/v1/efinance/transactions/lookup" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..." \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+**Date + tx_id (specific transaction by ID):**
+```bash
+curl -X POST "https://api.example.com/api/v1/efinance/transactions/lookup" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "date": "2024-01-15",
+    "tx_id": "TXN-2024-001-123456"
+  }'
+```
+
+**Device only (all transactions for a specific device across all dates):**
+```bash
+curl -X POST "https://api.example.com/api/v1/efinance/transactions/lookup" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "device_id": "DEVICE001"
   }'
 ```
 

@@ -686,36 +686,21 @@ func (s *transactionService) GetTransactionLookup(request models.TransactionLook
 }
 // SearchTransactionDetails searches for detailed transaction information based on multiple criteria
 func (s *transactionService) SearchTransactionDetails(request models.IsoTransactionSearchRequest) (*models.IsoTransactionSearchResponse, error) {
-	// Validate the date format
-	if _, err := time.Parse("2006-01-02", request.Date); err != nil {
-		return nil, fmt.Errorf("invalid date format, expected YYYY-MM-DD: %w", err)
+	// Validate the date format if provided
+	if request.Date != "" {
+		if _, err := time.Parse("2006-01-02", request.Date); err != nil {
+			return nil, fmt.Errorf("invalid date format, expected YYYY-MM-DD: %w", err)
+		}
 	}
 	
-	// Validate required fields
-	if request.DeviceID == "" {
-		return nil, fmt.Errorf("device_id is required")
-	}
-	if request.TrxRRN == "" {
-		return nil, fmt.Errorf("trx_rrn is required")
-	}
-	if request.PanID == "" {
-		return nil, fmt.Errorf("panid is required")
-	}
-	if request.BankGroupID == "" {
-		return nil, fmt.Errorf("bank_group_id is required")
-	}
-	if request.Amount == 0 {
-		return nil, fmt.Errorf("amount must be greater than 0")
-	}
-	if request.TrxDescr == "" {
-		return nil, fmt.Errorf("trx_descr is required")
-	}
+	// Note: All filter fields are optional - no fields are required
+	// The repository will build conditional WHERE clauses based on provided filters
 	
 	// Call repository method
 	result, err := s.transactionRepo.SearchTransactionDetails(request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search transaction details: %w", err)
 	}
-	
+
 	return result, nil
 }
