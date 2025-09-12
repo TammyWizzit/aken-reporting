@@ -697,7 +697,7 @@ func (r *transactionRepository) SearchTransactionDetails(request models.IsoTrans
 	type SearchResult struct {
 		Datetime        string  `gorm:"column:datetime"`
 		STAN            int     `gorm:"column:STAN"`
-		RRN             string  `gorm:"column:RRN"`
+		TrxRRN          string  `gorm:"column:trx_rrn"`
 		BIN             string  `gorm:"column:BIN"`
 		PANID           string  `gorm:"column:PANID"`
 		DeviceID        string  `gorm:"column:device_id"`
@@ -719,7 +719,7 @@ func (r *transactionRepository) SearchTransactionDetails(request models.IsoTrans
 		SELECT
 			trx_datetime AS datetime,
 			trx_stan AS STAN,
-			trx_rrn AS RRN,
+			COALESCE(trx_rrn, '') AS trx_rrn,
 			LEFT(TRIM(BOTH '"' FROM JSON_EXTRACT(trx_snd, '$."35"')), 6) AS BIN,
 			RIGHT(SUBSTRING_INDEX(SUBSTRING_INDEX(TRIM(BOTH '"' FROM JSON_EXTRACT(trx_snd, '$."35"')),'=',1),'D',1), 4) AS PANID,
 			TRIM(TRIM(BOTH '"' FROM JSON_EXTRACT(trx_snd, '$."42"'))) AS device_id,
@@ -731,9 +731,9 @@ func (r *transactionRepository) SearchTransactionDetails(request models.IsoTrans
 			TRIM(TRIM(BOTH '"' FROM JSON_EXTRACT(JSON_EXTRACT(trx_snd, '$."request_meta"'), '$."trx_id"'))) AS tx_id,
 			trx_amt AS amount,
 			trx_rsp_code AS RC,
-			trx_auth_code
+			COALESCE(trx_auth_code, '') AS trx_auth_code
 		FROM iso_trx
-		WHERE trx_rsp_code = '00'
+		WHERE 1=1
 	`
 	
 	// Build WHERE conditions dynamically
@@ -794,6 +794,12 @@ func (r *transactionRepository) SearchTransactionDetails(request models.IsoTrans
 		args = append(args, request.TxID)
 	}
 	
+	// Add response_code filter if provided
+	if request.ResponseCode != "" {
+		conditions = append(conditions, "trx_rsp_code = ?")
+		args = append(args, request.ResponseCode)
+	}
+	
 	// Combine all conditions
 	if len(conditions) > 0 {
 		baseQuery += " AND " + strings.Join(conditions, " AND ")
@@ -814,7 +820,7 @@ func (r *transactionRepository) SearchTransactionDetails(request models.IsoTrans
 		transactions[i] = models.TransactionSearchItem{
 			Datetime:        result.Datetime,
 			STAN:            result.STAN,
-			RRN:             result.RRN,
+			RRN:             result.TrxRRN,
 			BIN:             result.BIN,
 			PANID:           result.PANID,
 			DeviceID:        result.DeviceID,

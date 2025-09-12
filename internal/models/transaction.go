@@ -403,22 +403,23 @@ type TransactionLookupResponse struct {
 
 // IsoTransactionSearchRequest represents the request for individual ISO transaction search
 type IsoTransactionSearchRequest struct {
-	PanID       string `json:"panid,omitempty"`        // Optional filter
-	TrxRRN      string `json:"trx_rrn,omitempty"`      // Optional filter
-	DeviceID    string `json:"device_id,omitempty"`    // Optional filter
-	GroupID     string `json:"group_id,omitempty"`     // Optional filter (from element 41)
-	BankGroupID string `json:"bank_group_id,omitempty"` // Optional filter (from request_meta)
-	Amount      int    `json:"amount,omitempty"`       // Optional filter (0 means not specified)
-	TrxDescr    string `json:"trx_descr,omitempty"`    // Optional filter
-	Date        string `json:"date,omitempty"`         // Optional filter
-	TxID        string `json:"tx_id,omitempty"`        // Optional filter (from request_meta.trx_id)
+	PanID        string `json:"panid,omitempty"`         // Optional filter
+	TrxRRN       string `json:"trx_rrn,omitempty"`       // Optional filter
+	DeviceID     string `json:"device_id,omitempty"`     // Optional filter
+	GroupID      string `json:"group_id,omitempty"`      // Optional filter (from element 41)
+	BankGroupID  string `json:"bank_group_id,omitempty"` // Optional filter (from request_meta)
+	Amount       int    `json:"amount,omitempty"`        // Optional filter (0 means not specified)
+	TrxDescr     string `json:"trx_descr,omitempty"`     // Optional filter
+	Date         string `json:"date,omitempty"`          // Optional filter
+	TxID         string `json:"tx_id,omitempty"`         // Optional filter (from request_meta.trx_id)
+	ResponseCode string `json:"response_code,omitempty"` // Optional filter (RC/response code)
 }
 
 // TransactionSearchItem represents a single transaction in the search response
 type TransactionSearchItem struct {
 	Datetime        string  `json:"datetime"`
 	STAN            int     `json:"STAN"`
-	RRN             string  `json:"RRN"`              // Transaction Reference Number
+	RRN             string  `json:"trx_rrn"`          // Transaction Reference Number
 	BIN             string  `json:"BIN"`
 	PANID           string  `json:"PANID"`
 	DeviceID        string  `json:"device_id"`

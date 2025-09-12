@@ -629,15 +629,16 @@ func (h *TransactionHandler) SearchTransactionDetails(c *gin.Context) {
 	}
 
 	utils.LogTrace("Transaction search request received", map[string]interface{}{
-		"date":          request.Date,
-		"device_id":     request.DeviceID,
-		"trx_rrn":       request.TrxRRN,
-		"panid":         request.PanID,
-		"bank_group_id": request.BankGroupID,
-		"amount":        request.Amount,
-		"trx_descr":     request.TrxDescr,
-		"tx_id":         request.TxID,
-		"path":          c.Request.URL.Path,
+		"date":           request.Date,
+		"device_id":      request.DeviceID,
+		"trx_rrn":        request.TrxRRN,
+		"panid":          request.PanID,
+		"bank_group_id":  request.BankGroupID,
+		"amount":         request.Amount,
+		"trx_descr":      request.TrxDescr,
+		"tx_id":          request.TxID,
+		"response_code":  request.ResponseCode,
+		"path":           c.Request.URL.Path,
 	})
 
 	// Set MySQL flag for efinance APIs
@@ -647,14 +648,15 @@ func (h *TransactionHandler) SearchTransactionDetails(c *gin.Context) {
 	result, err := h.transactionService.SearchTransactionDetails(request)
 	if err != nil {
 		utils.LogError("Error searching transaction details", err, map[string]interface{}{
-			"date":          request.Date,
-			"device_id":     request.DeviceID,
-			"trx_rrn":       request.TrxRRN,
-			"panid":         request.PanID,
-			"bank_group_id": request.BankGroupID,
-			"amount":        request.Amount,
-			"trx_descr":     request.TrxDescr,
-			"tx_id":         request.TxID,
+			"date":           request.Date,
+			"device_id":      request.DeviceID,
+			"trx_rrn":        request.TrxRRN,
+			"panid":          request.PanID,
+			"bank_group_id":  request.BankGroupID,
+			"amount":         request.Amount,
+			"trx_descr":      request.TrxDescr,
+			"tx_id":          request.TxID,
+			"response_code":  request.ResponseCode,
 		})
 
 		// Check if this is an internal error that should be sanitized

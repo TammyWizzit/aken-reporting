@@ -323,7 +323,7 @@
                   "        const transaction = jsonData.transactions[0];",
                   "        pm.expect(transaction).to.have.property('datetime');",
                   "        pm.expect(transaction).to.have.property('STAN');",
-                  "        pm.expect(transaction).to.have.property('RRN');",
+                  "        pm.expect(transaction).to.have.property('trx_rrn');",
                   "        pm.expect(transaction).to.have.property('BIN');",
                   "        pm.expect(transaction).to.have.property('PANID');",
                   "        pm.expect(transaction).to.have.property('device_id');",
@@ -360,7 +360,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"panid\": \"{{panid}}\",\n    \"trx_rrn\": \"{{trx_rrn}}\",\n    \"device_id\": \"{{device_id}}\",\n    \"bank_group_id\": \"{{bank_group_id}}\",\n    \"amount\": {{amount}},\n    \"trx_descr\": \"{{trx_descr}}\",\n    \"date\": \"{{transaction_date}}\",\n    \"tx_id\": \"{{tx_id}}\"\n}"
+              "raw": "{\n    \"panid\": \"{{panid}}\",\n    \"trx_rrn\": \"{{trx_rrn}}\",\n    \"device_id\": \"{{device_id}}\",\n    \"bank_group_id\": \"{{bank_group_id}}\",\n    \"amount\": {{amount}},\n    \"trx_descr\": \"{{trx_descr}}\",\n    \"date\": \"{{transaction_date}}\",\n    \"tx_id\": \"{{tx_id}}\",\n    \"response_code\": \"{{response_code}}\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/v1/efinance/transactions/lookup",
@@ -386,7 +386,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n    \"panid\": \"1234\",\n    \"trx_rrn\": \"000000123456\",\n    \"device_id\": \"DEV001\",\n    \"bank_group_id\": \"BANK001\",\n    \"amount\": 10000,\n    \"trx_descr\": \"Purchase\",\n    \"date\": \"2024-01-15\",\n    \"tx_id\": \"TXN-2024-001-123456\"\n}"
+                  "raw": "{\n    \"panid\": \"1234\",\n    \"trx_rrn\": \"000000123456\",\n    \"device_id\": \"DEV001\",\n    \"bank_group_id\": \"BANK001\",\n    \"amount\": 10000,\n    \"trx_descr\": \"Purchase\",\n    \"date\": \"2024-01-15\",\n    \"tx_id\": \"TXN-2024-001-123456\",\n    \"response_code\": \"00\"\n}"
                 },
                 "url": {
                   "raw": "{{base_url}}/api/v1/efinance/transactions/lookup",
@@ -404,7 +404,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n    \"transactions\": [\n        {\n            \"datetime\": \"2024-01-15T14:30:45\",\n            \"STAN\": 123456,\n            \"RRN\": \"000000123456\",\n            \"BIN\": \"123456\",\n            \"PANID\": \"1234\",\n            \"device_id\": \"DEV001\",\n            \"group_id\": \"GROUP001\",\n            \"trx_descr\": \"Purchase\",\n            \"trx_type\": \"00\",\n            \"bank_group_id\": \"BANK001\",\n            \"transaction_code\": \"TXN001\",\n            \"tx_id\": \"TXN-2024-001-123456\",\n            \"amount\": 10000,\n            \"RC\": \"00\",\n            \"trx_auth_code\": \"123456\"\n        }\n    ]\n}"
+              "body": "{\n    \"transactions\": [\n        {\n            \"datetime\": \"2024-01-15T14:30:45\",\n            \"STAN\": 123456,\n            \"trx_rrn\": \"000000123456\",\n            \"BIN\": \"123456\",\n            \"PANID\": \"1234\",\n            \"device_id\": \"DEV001\",\n            \"group_id\": \"GROUP001\",\n            \"trx_descr\": \"Purchase\",\n            \"trx_type\": \"00\",\n            \"bank_group_id\": \"BANK001\",\n            \"transaction_code\": \"TXN001\",\n            \"tx_id\": \"TXN-2024-001-123456\",\n            \"amount\": 10000,\n            \"RC\": \"00\",\n            \"trx_auth_code\": \"123456\"\n        }\n    ]\n}"
             }
           ]
         }

@@ -123,7 +123,7 @@ curl -X POST "https://api.example.com/api/v1/efinance/transactions/totals" \
 
 **Endpoint:** `POST /api/v1/efinance/transactions/lookup`
 
-Searches for specific transaction details based on various criteria including PAN ID, RRN, device ID, and other transaction attributes.
+Searches for specific transaction details based on various criteria including PAN ID, RRN, device ID, and other transaction attributes. By default, returns all transactions (both successful and failed). Use the `response_code` filter to filter by transaction status.
 
 #### Request
 
@@ -154,6 +154,7 @@ Searches for specific transaction details based on various criteria including PA
 | `trx_descr` | string | No | Transaction description/type (optional filter) |
 | `date` | string | No | Transaction date in YYYY-MM-DD format (optional filter) |
 | `tx_id` | string | No | Transaction ID from request_meta (optional filter) |
+| `response_code` | string | No | Response code (RC) filter (optional filter) |
 
 #### Response
 
@@ -165,7 +166,7 @@ Searches for specific transaction details based on various criteria including PA
     {
       "datetime": "2024-01-15T10:30:45Z",
       "STAN": 123456,
-      "RRN": "240115123456",
+      "trx_rrn": "240115123456",
       "BIN": "123456",
       "PANID": "123456****1234",
       "device_id": "DEVICE001",
@@ -190,7 +191,7 @@ Searches for specific transaction details based on various criteria including PA
 | `transactions` | array | Array of matching transactions |
 | `transactions[].datetime` | string | Transaction timestamp (ISO 8601) |
 | `transactions[].STAN` | integer | System Trace Audit Number |
-| `transactions[].RRN` | string | Retrieval Reference Number |
+| `transactions[].trx_rrn` | string | Retrieval Reference Number |
 | `transactions[].BIN` | string | Bank Identification Number |
 | `transactions[].PANID` | string | Masked PAN identifier |
 | `transactions[].device_id` | string | Device/terminal identifier |
@@ -271,6 +272,28 @@ curl -X POST "https://api.example.com/api/v1/efinance/transactions/lookup" \
   -d '{
     "date": "2024-01-15",
     "tx_id": "TXN-2024-001-123456"
+  }'
+```
+
+**Response code filter (successful transactions only):**
+```bash
+curl -X POST "https://api.example.com/api/v1/efinance/transactions/lookup" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "date": "2024-01-15",
+    "response_code": "00"
+  }'
+```
+
+**Response code filter (failed transactions):**
+```bash
+curl -X POST "https://api.example.com/api/v1/efinance/transactions/lookup" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "date": "2024-01-15",
+    "response_code": "05"
   }'
 ```
 

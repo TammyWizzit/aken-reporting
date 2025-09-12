@@ -103,7 +103,8 @@ Authorization: Bearer <jwt_token>
     "amount": 10000,
     "trx_descr": "Purchase",
     "date": "2024-01-15",
-    "tx_id": "TXN-2024-001-123456"
+    "tx_id": "TXN-2024-001-123456",
+    "response_code": "00"
 }
 ```
 
@@ -134,7 +135,7 @@ Authorization: Bearer <jwt_token>
         {
             "datetime": "2024-01-15T14:30:45",
             "STAN": 123456,
-            "RRN": "000000123456",
+            "trx_rrn": "000000123456",
             "BIN": "123456",
             "PANID": "1234",
             "device_id": "DEV001",
