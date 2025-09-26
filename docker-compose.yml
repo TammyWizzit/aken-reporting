@@ -1,0 +1,166 @@
+version: '3.8'
+
+services:
+  # Development service (for make dev)
+  dev:
+    build: 
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: aken-reporting-service-dev
+    ports:
+      - "8090:8090"
+    environment:
+      - PORT=8090
+      - ENV=development
+      - DISABLE_AUTH=false
+      - GIN_MODE=release
+      # PostgreSQL connection (for v2 APIs)
+      - PORTAL_DB_HOST=postgres
+      - PORTAL_DB_PORT=5432
+      - PORTAL_DB_USER=wizzit_pay
+      - PORTAL_DB_PASSWORD=wizzit_pay
+      - PORTAL_DB_NAME=wizzit_pay
+      # MySQL connection (for efinance v1 APIs)
+      - ATLAS_DB_HOST=mysql
+      - ATLAS_DB_PORT=3306
+      - ATLAS_DB_USER=atlas
+      - ATLAS_DB_PASSWORD=wizzitSTG11!#
+      - ATLAS_DB_NAME=atlas
+      # Redis configuration
+      - REDIS_ENABLED=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - REDIS_DB=0
+      - REDIS_POOL_SIZE=10
+      - REDIS_TIMEOUT=5
+      - REDIS_TTL_SECONDS=1800
+      - REDIS_KEY_PREFIX=aken:reporting
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - aken-network
+
+  # Production service (for make build)
+  prod:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: aken-reporting-service
+    image: aken-reporting-service
+    ports:
+      - "8090:8090"
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - mysql
+      - redis
+    networks:
+      - aken-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8090/api/v2/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Main service (backwards compatibility)
+  aken-reporting-service:
+    build: .
+    container_name: aken-reporting-service
+    ports:
+      - "8090:8090"
+    environment:
+      - PORT=8090
+      - ENV=development
+      - DISABLE_AUTH=false
+      # PostgreSQL connection (for v2 APIs)
+      - PORTAL_DB_HOST=postgres
+      - PORTAL_DB_PORT=5432
+      - PORTAL_DB_USER=wizzit_pay
+      - PORTAL_DB_PASSWORD=wizzit_pay
+      - PORTAL_DB_NAME=wizzit_pay
+      # MySQL connection (for efinance v1 APIs)
+      - ATLAS_DB_HOST=mysql
+      - ATLAS_DB_PORT=3306
+      - ATLAS_DB_USER=atlas
+      - ATLAS_DB_PASSWORD=wizzitSTG11!#
+      - ATLAS_DB_NAME=atlas
+      # Redis configuration
+      - REDIS_ENABLED=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - REDIS_DB=0
+      - REDIS_POOL_SIZE=10
+      - REDIS_TIMEOUT=5
+      - REDIS_TTL_SECONDS=1800
+      - REDIS_KEY_PREFIX=aken:reporting
+    depends_on:
+      - postgres
+      - mysql
+    networks:
+      - aken-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8090/api/v2/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # PostgreSQL database (shared with main AKEN service)
+  postgres:
+    image: postgres:13
+    container_name: aken-postgres
+    environment:
+      - PORTAL_DB_NAME=wizzit_pay
+      - PORTAL_DB_USER=wizzit_pay
+      - PORTAL_DB_PASSWORD=wizzit_pay
+    ports:
+      - "5433:5432"
+    volumes:
+      - portal_db_data:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d
+    networks:
+      - aken-network
+    restart: unless-stopped
+
+  # MySQL database (for efinance v1 APIs)
+  mysql:
+    image: mysql:8.0
+    container_name: aken-mysql
+    environment:
+      - ATLAS_DB_ROOT_PASSWORD=rootpassword
+      - ATLAS_DB_NAME=atlas
+      - ATLAS_DB_USER=atlas
+      - ATLAS_DB_PASSWORD=wizzitSTG11!#
+    ports:
+      - "3307:3306"
+    volumes:
+      - atlas_db_data:/var/lib/mysql
+    networks:
+      - aken-network
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+
+  # Redis for future caching (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: aken-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - aken-network
+    restart: unless-stopped
+
+volumes:
+  portal_db_data:
+  atlas_db_data:
+
+networks:
+  aken-network:
+    driver: bridge
