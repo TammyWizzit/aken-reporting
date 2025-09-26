@@ -18,7 +18,7 @@ type RedisConfig struct {
 
 // GetRedisConfig returns Redis configuration from environment variables
 func GetRedisConfig() *RedisConfig {
-	host := getEnvOrDefault("REDIS_HOST", "localhost")
+	host := getEnvOrDefault("REDIS_HOST", "redis")
 	port := getEnvOrDefault("REDIS_PORT", "6379")
 	password := getEnvOrDefault("REDIS_PASSWORD", "")
 

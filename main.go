@@ -21,6 +21,14 @@ func main() {
 	config.LoadEnv()     // Load environment variables from .env file
 	database.ConnectDB() // Connect to the database
 
+	// Set Gin mode based on environment variable
+	ginMode := config.GetGinMode()
+	gin.SetMode(ginMode)
+	
+	utils.LogInfo("Gin framework configured", map[string]interface{}{
+		"mode": ginMode,
+	})
+
 	// Initialize Redis cache service
 	cacheService, err := services.NewCacheService()
 	if err != nil {

@@ -3,16 +3,17 @@ package database
 import (
 	"fmt"
 	"log"
-	"os"
 	"strings"
+
+	"aken_reporting_service/internal/config"
 
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
-var DB *gorm.DB        // PostgreSQL database for v2 APIs
-var MySQLDB *gorm.DB   // MySQL database for efinance v1 APIs
+var DB *gorm.DB      // PostgreSQL database for v2 APIs
+var MySQLDB *gorm.DB // MySQL database for efinance v1 APIs
 
 // ConnectDB initializes both database connections
 func ConnectDB() {
@@ -23,22 +24,28 @@ func ConnectDB() {
 // connectPostgreSQL initializes the PostgreSQL connection for v2 APIs
 func connectPostgreSQL() {
 	var err error
-	
+
+	// Get PostgreSQL configuration from config package
+	host, port, user, password, dbname := config.GetPostgreSQLConfig()
+
+	// Check if PostgreSQL configuration is available
+	if host == "" || user == "" || dbname == "" {
+		log.Printf("⚠️ PostgreSQL configuration incomplete: host=%s user=%s dbname=%s", host, user, dbname)
+		log.Printf("Continuing without PostgreSQL connection...")
+		return
+	}
+
+	// Set default port if not provided
+	if port == "" {
+		port = "5432"
+	}
+
 	// PostgreSQL connection string
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		getEnvOrDefault("POSTGRES_HOST", "10.100.18.32"),
-		getEnvOrDefault("POSTGRES_PORT", "5432"),
-		getEnvOrDefault("POSTGRES_USER", "wizzit_pay"),
-		getEnvOrDefault("POSTGRES_PASSWORD", "wizzit_pay"),
-		getEnvOrDefault("POSTGRES_DB", "wizzit_pay"),
-	)
-	
+		host, port, user, password, dbname)
+
 	log.Printf("Connecting to PostgreSQL database: host=%s port=%s dbname=%s user=%s",
-		getEnvOrDefault("POSTGRES_HOST", "10.100.18.32"),
-		getEnvOrDefault("POSTGRES_PORT", "5432"),
-		getEnvOrDefault("POSTGRES_DB", "wizzit_pay"),
-		getEnvOrDefault("POSTGRES_USER", "wizzit_pay"),
-	)
+		host, port, dbname, user)
 
 	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
@@ -49,27 +56,33 @@ func connectPostgreSQL() {
 	}
 }
 
-// connectMySQL initializes the MySQL connection for efinance v1 APIs  
+// connectMySQL initializes the MySQL connection for efinance v1 APIs
 func connectMySQL() {
 	var err error
-	
-	// MySQL connection string for efinance APIs
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
-		getEnvOrDefault("MYSQL_USER", "atlas"),
-		getEnvOrDefault("MYSQL_PASSWORD", "wizzitSTG11!#"),
-		getEnvOrDefault("MYSQL_HOST", "10.100.18.31"),
-		getEnvOrDefault("MYSQL_PORT", "3306"),
-		getEnvOrDefault("MYSQL_DATABASE", "atlas"),
-	)
-	
-	log.Printf("Connecting to MySQL database: host=%s port=%s dbname=%s user=%s",
-		getEnvOrDefault("MYSQL_HOST", "10.100.18.31"),
-		getEnvOrDefault("MYSQL_PORT", "3306"),
-		getEnvOrDefault("MYSQL_DATABASE", "atlas"),
-		getEnvOrDefault("MYSQL_USER", "atlas"),
-	)
 
-	MySQLDB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	// Get MySQL configuration from config package
+	mysql_host, port, user, password, database := config.GetMySQLConfig()
+
+	// Check if MySQL configuration is available
+	if mysql_host == "" || user == "" || database == "" {
+		log.Printf("⚠️ MySQL configuration incomplete: host=%s user=%s database=%s", mysql_host, user, database)
+		log.Printf("Continuing without MySQL connection...")
+		return
+	}
+
+	// Set default port if not provided
+	if port == "" {
+		port = "3306"
+	}
+
+	// MySQL connection string for efinance APIs
+	mysql_dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+		user, password, mysql_host, port, database)
+
+	log.Printf("Connecting to MySQL database: host=%s port=%s dbname=%s user=%s",
+		mysql_host, port, database, user)
+
+	MySQLDB, err = gorm.Open(mysql.Open(mysql_dsn), &gorm.Config{})
 	if err != nil {
 		log.Printf("⚠️ Failed to connect to MySQL database: %v", err)
 		log.Printf("Continuing without MySQL connection...")
@@ -98,14 +111,6 @@ func testConnection(db *gorm.DB) error {
 	return nil
 }
 
-// getEnvOrDefault returns environment variable value or default if not set
-func getEnvOrDefault(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
 // getDefaultPort returns the default port for the given database type
 func getDefaultPort(dbType string) string {
 	switch strings.ToLower(dbType) {
@@ -117,4 +122,3 @@ func getDefaultPort(dbType string) string {
 		return "3306"
 	}
 }
-
