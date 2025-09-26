@@ -1,7 +1,7 @@
 export APP := $(shell basename $(abspath $(dir $(lastword $(MAKEFILE_LIST)))))
 ENV ?= staging
 REGISTRY = registry.$(ENV).wizzitdigital.com
-VERSION = $(shell git describe --tags --always --dirty 2>/dev/null || echo "v1.0.0")
+VERSION = $(shell git describe --tags --always --dirty 2>/dev/null || echo "1.0.0")
 
 default: build
 
